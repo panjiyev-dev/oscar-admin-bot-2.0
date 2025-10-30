@@ -1,0 +1,6 @@
+# Node modules
+/node_modules
+
+# Maxfiy ma'lumotlar
+.env
+serviceAccountKey.json
