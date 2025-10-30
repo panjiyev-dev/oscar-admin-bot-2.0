@@ -6,27 +6,41 @@ const TelegramBot = require('node-telegram-bot-api');
 const admin = require('firebase-admin');
 const axios = require('axios');
 const FormData = require('form-data');
-// const fs = require('fs'); // fs hozirda ishlatilmaydi, lekin mavjudligini qoldiramiz
+// const fs = require('fs'); // Endi serviceAccountKey.json ni o'qish uchun fs kerak emas
 
-// 2. Maxfiy ma'lumotlarni .env dan olish
-const TOKEN = process.env.TELEGRAM_BOT_TOKEN || '7586941333:AAHKly13Z3M5qkyKjP-6x-thWvXdJudIHsU'; // Agar .env ishlamasa, default ishlatiladi (lekin tavsiya etilmaydi!)
+// 2. Maxfiy ma'lumotlarni Environment Variables (Railway) dan olish
+// Eslatma: Bu yerda default qiymatlarni qoldirish faqat test uchun yaxshi.
+// Asosiy deployda Railway'dan olingan haqiqiy qiymatlar ishlatiladi.
+const TOKEN = process.env.TELEGRAM_BOT_TOKEN || '7586941333:AAHKly13Z3M5qkyKjP-6x-thWvXdJudIHsU';
 const IMGBB_API_KEY = process.env.IMGBB_API_KEY || '38fcdca0b624f0123f15491175c8bd78';
 // Admin ID'lar stringdan Arrayga o'tkaziladi
 const admins = (process.env.ADMIN_IDS || '5761225998,7122472578').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 
-// 3. Firebase'ni sozlash
+// 3. 🛠️ FIREBASE'NI SOZLASH (YANGILANGAN QISM - Railway uchun)
 let db;
 try {
-    const serviceAccount = require('./serviceAccountKey.json');
+    // 1. JSON stringni ENVIRONMENT VARIABLE'dan o'qish
+    const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+
+    if (!serviceAccountJson) {
+        // Agar o'zgaruvchi yo'q bo'lsa, xato tashlaymiz
+        throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON topilmadi. Variables bo'limini tekshiring.");
+    }
+
+    // 2. JSON stringni JS obyektiga aylantirish
+    const serviceAccount = JSON.parse(serviceAccountJson);
+
+    // 3. Firebase'ni sozlash
     admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
         databaseURL: "https://oscar-d85af.firebaseio.com" // Loyihangiz nomi
     });
     db = admin.firestore();
+    console.log("✅ Firebase muvaffaqiyatli ulangan.");
+
 } catch (error) {
-    console.error("❌ Firebase sozlashda xato! serviceAccountKey.json to'g'ri joylashtirilganiga ishonch hosil qiling.");
-    console.error(error.message);
-    // Agar Firebase ishga tushmasa, bot xabar yubora olmaydi, lekin log yozamiz
+    console.error("❌ Firebase sozlashda KRITIK XATO!", error.message);
+    // Xato bo'lsa, loyihaning ishlashiga imkon bermaslik yaxshiroq
 }
 
 const bot = new TelegramBot(TOKEN, { polling: true });
@@ -44,17 +58,18 @@ const mainKeyboard = {
     },
 };
 
-// 5. Yordamchi funksiyalar (Sizning kodingizdan o'zgartirishlarsiz, chunki ular yaxshi yozilgan)
+// 5. Yordamchi funksiyalar (O'zgarishsiz qoldi)
 // --------------------------------------------------------------------------------------
 
 /**
  * Berilgan collection ichidagi eng katta IDni topib, uning keyingisini qaytaradi.
  */
 async function getNextId(collectionName) {
+    // Firebase ulanmagan bo'lsa, -1 qaytarish
+    if (!db) return -1; 
     try {
         const snapshot = await db.collection(collectionName).orderBy('id', 'desc').limit(1).get();
         if (snapshot.empty) return 1;
-        // Raqam ekanligini tekshirish muhim
         const lastId = snapshot.docs[0].data().id;
         return (typeof lastId === 'number' && lastId > 0) ? lastId + 1 : 1; 
     } catch (error) {
@@ -106,6 +121,12 @@ function resetUserState(chatId) {
 async function handleCommand(chatId, text) {
     // Har qanday buyruq oldin state'ni tozalaydi
     resetUserState(chatId);
+    
+    // Agar db ulanmagan bo'lsa, xabar berish
+    if (!db) {
+        bot.sendMessage(chatId, "❌ Uzr, Firestore (Database) ulanishi xato bo'ldi. Admin sozlamalarini tekshiring.", mainKeyboard);
+        return;
+    }
 
     if (text === "🛍 Mahsulot qo'shish") {
         const categoriesSnapshot = await db.collection('categories').get();
@@ -198,7 +219,7 @@ async function handleCommand(chatId, text) {
 }
 
 
-// 6. Asosiy message handler
+// 6. Asosiy message handler (O'zgarishsiz qoldi)
 // --------------------------------------------------------------------------------------
 
 // Tugma buyruqlarining to'liq ro'yxati
@@ -208,7 +229,7 @@ const commandButtons = [
     "💱 Dollar kursini o'rnatish",
     "🔄 Mahsulotni yangilash",
     "📊 Ma'lumotlarni ko'rish",
-    "❌ Bekor qilish" // Qoshimcha tekshirish uchun
+    "❌ Bekor qilish"
 ];
 
 bot.on('message', async (msg) => {
@@ -219,6 +240,12 @@ bot.on('message', async (msg) => {
     // Faqat admin uchun ruxsat
     if (!admins.includes(chatId)) {
         bot.sendMessage(chatId, "Bu bot faqat administratorlar uchun mo'ljallangan.");
+        return;
+    }
+    
+    // Agar db ulanmagan bo'lsa, ma'lumot kiritishga ruxsat bermaslik
+    if (!db) {
+        bot.sendMessage(chatId, "❌ Uzr, Database ulanishi yo'q. Avval Railway Variables ni tekshiring.");
         return;
     }
 
@@ -455,26 +482,38 @@ bot.on('message', async (msg) => {
         let fieldNameUz;
 
         // Qiymatni tekshirish va o'zlashtirish
-        if (fieldType.includes('price') || fieldType === 'stock' || fieldType === 'boxCapacity') {
-            fieldNameUz = fieldType === 'stock' ? 'Stock' : (fieldType === 'priceBox' ? 'Karobka narxi' : (fieldType === 'pricePiece' ? 'Dona narxi' : 'Karobkadagi dona soni'));
-            if (!/^\d+$/.test(text) || parseInt(text) < 0) {
-                bot.sendMessage(chatId, `Iltimos, ${fieldNameUz} uchun 0 yoki musbat son kiriting!`);
-                return;
+        if (fieldType.includes('price') || fieldType === 'stock' || fieldType === 'boxCapacity' || fieldType === 'discount') {
+            
+            const isDiscount = fieldType === 'discount';
+            const isStockOrCapacity = fieldType === 'stock' || fieldType === 'boxCapacity';
+            
+            if (isDiscount) {
+                fieldNameUz = 'Chegirma';
+                if (!/^\d+$/.test(text) || parseInt(text) < 0 || parseInt(text) > 100) {
+                    bot.sendMessage(chatId, "Iltimos, Chegirma uchun 0-100 orasida son kiriting!");
+                    return;
+                }
+            } else if (isStockOrCapacity) {
+                fieldNameUz = fieldType === 'stock' ? 'Stock' : 'Karobkadagi dona soni';
+                 if (!/^\d+$/.test(text) || parseInt(text) < 0) {
+                    bot.sendMessage(chatId, `Iltimos, ${fieldNameUz} uchun 0 yoki musbat son kiriting!`);
+                    return;
+                }
+            } else {
+                fieldNameUz = fieldType === 'priceBox' ? 'Karobka narxi' : 'Dona narxi';
+                if (!/^\d+$/.test(text) || parseInt(text) <= 0) {
+                    bot.sendMessage(chatId, `${fieldNameUz} uchun musbat son kiriting!`);
+                    return;
+                }
             }
             value = parseInt(text);
-        } else if (fieldType === 'discount') {
-            fieldNameUz = 'Chegirma';
-            if (!/^\d+$/.test(text) || parseInt(text) < 0 || parseInt(text) > 100) {
-                bot.sendMessage(chatId, "Iltimos, Chegirma uchun 0-100 orasida son kiriting!");
-                return;
-            }
-            value = parseInt(text);
+
         } else {
             bot.sendMessage(chatId, "Noto'g'ri maydon aniqlandi!");
             resetUserState(chatId);
             return;
         }
-
+        
         try {
             await db.collection('products').doc(String(stateData.id)).update({ [fieldType]: value });
             bot.sendMessage(chatId, 
@@ -503,20 +542,34 @@ bot.on('photo', async (msg) => {
     const fileId = msg.photo[msg.photo.length - 1].file_id; // Eng yuqori sifatdagi rasm
 
     if (!admins.includes(chatId)) return;
+    
+    // Agar db ulanmagan bo'lsa, xabar berish
+    if (!db) {
+        bot.sendMessage(chatId, "❌ Uzr, Database ulanishi yo'q. Avval Railway Variables ni tekshiring.");
+        return;
+    }
 
     if (userState[chatId] && userState[chatId].step === 'product_image') {
         let data = userState[chatId].data;
 
-        bot.sendMessage(chatId, "Rasm yuklanmoqda... ⏳");
+        // Foydalanuvchiga kutish haqida xabar berish
+        const waitMessage = await bot.sendMessage(chatId, "Rasm yuklanmoqda... ⏳");
 
         const imageUrl = await uploadToImgBB(fileId);
         if (imageUrl) {
             data.image = imageUrl;
             userState[chatId].step = 'product_description';
             // Rasm muvaffaqiyatli yuklangandan so'ng asosiy menyu tugmasi yashirinib, keyingi bosqich so'raladi
-            bot.sendMessage(chatId, `✅ Rasm yuklandi: ${imageUrl}\n\n7/8. Tavsif (qisqa ma'lumot):`);
+            await bot.editMessageText(`✅ Rasm yuklandi: ${imageUrl.substring(0, 50)}...\n\n7/8. Tavsif (qisqa ma'lumot):`, {
+                chat_id: chatId,
+                message_id: waitMessage.message_id
+            });
+            // mainKeyboard ni yubormaslik kerak, chunki u photo dan keyin yuborilgan waitMessage ni tahrirlaydi
         } else {
-            bot.sendMessage(chatId, "❌ Rasm yuklashda xato yuz berdi! Qaytadan urinib ko'ring.");
+            bot.editMessageText("❌ Rasm yuklashda xato yuz berdi! Qaytadan urinib ko'ring.", {
+                chat_id: chatId,
+                message_id: waitMessage.message_id
+            });
             // Xato bo'lsa, bosqichni o'zgartirmaymiz, foydalanuvchi qayta urinishi yoki bekor qilishi mumkin
         }
         userState[chatId].data = data;
@@ -525,7 +578,7 @@ bot.on('photo', async (msg) => {
     }
 });
 
-// 8. Callback query handler (inline tugmalar uchun)
+// 8. Callback query handler (inline tugmalar uchun) (O'zgarishsiz qoldi)
 // --------------------------------------------------------------------------------------
 
 bot.on('callback_query', async (callbackQuery) => {
@@ -534,6 +587,12 @@ bot.on('callback_query', async (callbackQuery) => {
 
     if (!data || !admins.includes(chatId)) {
         bot.answerCallbackQuery(callbackQuery.id, { text: "Ruxsat yo'q!" });
+        return;
+    }
+    
+    // Agar db ulanmagan bo'lsa, xabar berish
+    if (!db) {
+        bot.answerCallbackQuery(callbackQuery.id, { text: "Database ulanishi yo'q. Tekshiring." });
         return;
     }
     
@@ -568,12 +627,12 @@ bot.on('callback_query', async (callbackQuery) => {
             };
 
             const message = `📝 **Mahsulot:** ${productData.name} (ID: ${productId})\n\n` +
-                           `Hozirgi qiymatlar:\n` +
-                           `• **Karobka narxi:** ${productData.priceBox.toLocaleString()} so'm\n` +
-                           `• **Dona narxi:** ${productData.pricePiece.toLocaleString()} so'm\n` +
-                           `• **Chegirma:** ${productData.discount}%\n` +
-                           `• **Stock:** ${productData.stock.toLocaleString()} dona\n\n` +
-                           `Qaysi maydonni yangilashni xohlaysiz? (Tugmani bosing)`;
+                            `Hozirgi qiymatlar:\n` +
+                            `• **Karobka narxi:** ${productData.priceBox.toLocaleString()} so'm\n` +
+                            `• **Dona narxi:** ${productData.pricePiece.toLocaleString()} so'm\n` +
+                            `• **Chegirma:** ${productData.discount}%\n` +
+                            `• **Stock:** ${productData.stock.toLocaleString()} dona\n\n` +
+                            `Qaysi maydonni yangilashni xohlaysiz? (Tugmani bosing)`;
 
             bot.editMessageText(message, { 
                 chat_id: chatId, message_id: callbackQuery.message.message_id, 
