@@ -267,7 +267,7 @@ async function handleCommand(chatId, text) {
 }
 
 
-// 6. Asosiy message handler (Yangi step'lar qo'shildi: kategoriya yangilash, mahsulot to'liq yangilash)
+// 6. Asosiy message handler (Yangi step'lar qo'shildi: kategoriya yangilash, mahsulot to'liq yangilash; YANGI: mahsulot nomi yangilash)
 // --------------------------------------------------------------------------------------
 
 // Tugma buyruqlarining to'liq ro'yxati (Yangi tugma qo'shildi)
@@ -631,6 +631,23 @@ bot.on('message', async (msg) => {
         return;
     }
 
+    // YANGI: Mahsulot nomi yangilash
+    if (userState[chatId] && userState[chatId].step === 'update_product_name') {
+        const stateData = userState[chatId].data;
+        try {
+            await db.collection('products').doc(String(stateData.id)).update({ name: text });
+            bot.sendMessage(chatId, 
+                `✅ **Mahsulot nomi** yangilandi: **${text}**\n\nEndi boshqa amalni tanlang.`, 
+                mainKeyboard
+            );
+        } catch (error) {
+            console.error("Nomi yangilashda xato:", error);
+            bot.sendMessage(chatId, "❌ Nomi yangilashda xato yuz berdi!", mainKeyboard);
+        }
+        resetUserState(chatId);
+        return;
+    }
+
     // Noma'lum holat
     bot.sendMessage(chatId, "Tushunmadim. Iltimos, quyidagi tugmalardan birini tanlang:", mainKeyboard);
 });
@@ -695,7 +712,7 @@ bot.on('photo', async (msg) => {
     }
 });
 
-// 8. Callback query handler (inline tugmalar uchun) (TUZATILDI: ID parsing ni yaxshilash, debug log qo'shish, parseInt ni olib tashlash va string ishlatish)
+// 8. Callback query handler (inline tugmalar uchun) (TUZATILDI: ID parsing ni yaxshilash, debug log qo'shish, parseInt ni olib tashlash va string ishlatish; YANGI: mahsulot nomi yangilash)
 // --------------------------------------------------------------------------------------
 
 bot.on('callback_query', async (callbackQuery) => {
@@ -964,7 +981,7 @@ bot.on('callback_query', async (callbackQuery) => {
         return;
     }
 
-    // ... Mahsulot tanlash va yangilash maydonini tanlash qismi (KENGAYTIRILDI: description, image, boxCapacity qo'shildi; TUZATILDI: ID parsing)
+    // ... Mahsulot tanlash va yangilash maydonini tanlash qismi (KENGAYTIRILDI: description, image, boxCapacity qo'shildi; TUZATILDI: ID parsing; YANGI: name qo'shildi)
     if (data.startsWith('update_product_')) {
         // (Mahsulot tanlandi)
         const productIdStr = data.replace('update_product_', '');
@@ -996,6 +1013,7 @@ bot.on('callback_query', async (callbackQuery) => {
             const updateKeyboard = {
                 reply_markup: {
                     inline_keyboard: [
+                        [{ text: `Nomi: ${productData.name}`, callback_data: `update_field_name_${productIdNum}` }],
                         [{ text: `Karobka narxi: ${productData.priceBox.toLocaleString()} so'm`, callback_data: `update_field_priceBox_${productIdNum}` }],
                         [{ text: `Dona narxi: ${productData.pricePiece.toLocaleString()} so'm`, callback_data: `update_field_pricePiece_${productIdNum}` }],
                         [{ text: `Chegirma: ${productData.discount}%`, callback_data: `update_field_discount_${productIdNum}` }],
@@ -1010,6 +1028,7 @@ bot.on('callback_query', async (callbackQuery) => {
 
             const message = `📝 **Mahsulot:** ${productData.name} (ID: ${productIdNum})\n\n` +
                             `Hozirgi qiymatlar:\n` +
+                            `• **Nomi:** ${productData.name}\n` +
                             `• **Karobka narxi:** ${productData.priceBox.toLocaleString()} so'm\n` +
                             `• **Dona narxi:** ${productData.pricePiece.toLocaleString()} so'm\n` +
                             `• **Chegirma:** ${productData.discount}%\n` +
@@ -1047,6 +1066,7 @@ bot.on('callback_query', async (callbackQuery) => {
         console.log(`Parsed product ID for field update: ${productIdNum}`); // Debug
 
         const fieldMap = {
+            'name': 'Mahsulot nomi (matn)',
             'priceBox': 'Karobka narxi (faqat musbat son)',
             'pricePiece': 'Dona narxi (faqat musbat son)',
             'discount': 'Chegirma (0 dan 100 gacha son)',
@@ -1062,7 +1082,12 @@ bot.on('callback_query', async (callbackQuery) => {
             return;
         }
 
-        if (fieldType === 'description') {
+        if (fieldType === 'name') {
+            userState[chatId] = { step: 'update_product_name', data: { id: productIdNum } };
+            bot.editMessageText(`**Yangi mahsulot nomi** ni kiriting (Bekor qilish uchun ❌ Bekor qilish ni bosing):`, { 
+                chat_id: chatId, message_id: callbackQuery.message.message_id, parse_mode: 'Markdown'
+            });
+        } else if (fieldType === 'description') {
             userState[chatId] = { step: 'update_product_description', data: { id: productIdNum } };
             bot.editMessageText(`**Yangi tavsif** ni kiriting (Bekor qilish uchun ❌ Bekor qilish ni bosing):`, { 
                 chat_id: chatId, message_id: callbackQuery.message.message_id, parse_mode: 'Markdown'
