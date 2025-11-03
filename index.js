@@ -503,9 +503,10 @@ bot.on('message', async (msg) => {
         return;
     }
 
-    // YANGI: Kategoriya yangilash bosqichlari (nom va icon)
+    // YANGI: Kategoriya yangilash bosqichlari (nom va icon) - XATONI TUZATISH: Tekshiruvlarni qo'shish va console.log
     if (userState[chatId] && userState[chatId].step === 'update_category_name') {
         const stateData = userState[chatId].data;
+        console.log(`Updating category name for ID: ${stateData.id}, new name: ${text}`); // Debug
         try {
             await db.collection('categories').doc(String(stateData.id)).update({ name: text });
             bot.sendMessage(chatId, 
@@ -514,7 +515,7 @@ bot.on('message', async (msg) => {
             );
         } catch (error) {
             console.error("Kategoriya nomini yangilashda xato:", error);
-            bot.sendMessage(chatId, "❌ Nom yangilashda xato yuz berdi!", mainKeyboard);
+            bot.sendMessage(chatId, "❌ Nom yangilashda xato yuz berdi! Xato: " + error.message, mainKeyboard);
         }
         resetUserState(chatId);
         return;
@@ -522,6 +523,7 @@ bot.on('message', async (msg) => {
 
     if (userState[chatId] && userState[chatId].step === 'update_category_icon') {
         const stateData = userState[chatId].data;
+        console.log(`Updating category icon for ID: ${stateData.id}, new icon: ${text}`); // Debug
         try {
             await db.collection('categories').doc(String(stateData.id)).update({ icon: text });
             bot.sendMessage(chatId, 
@@ -530,7 +532,7 @@ bot.on('message', async (msg) => {
             );
         } catch (error) {
             console.error("Kategoriya ikonka yangilashda xato:", error);
-            bot.sendMessage(chatId, "❌ Ikonka yangilashda xato yuz berdi!", mainKeyboard);
+            bot.sendMessage(chatId, "❌ Ikonka yangilashda xato yuz berdi! Xato: " + error.message, mainKeyboard);
         }
         resetUserState(chatId);
         return;
@@ -627,9 +629,6 @@ bot.on('message', async (msg) => {
         return;
     }
 
-    // YANGI: Mahsulot boxCapacity yangilash (agar kerak bo'lsa, lekin hozir update_value da bor)
-    // (Bu allaqachon update_value da qamrab olingan)
-
     // Noma'lum holat
     bot.sendMessage(chatId, "Tushunmadim. Iltimos, quyidagi tugmalardan birini tanlang:", mainKeyboard);
 });
@@ -694,7 +693,7 @@ bot.on('photo', async (msg) => {
     }
 });
 
-// 8. Callback query handler (inline tugmalar uchun) (KENGAYTIRILDI: kategoriya yangilash, kategoriya bo'yicha mahsulotlar, to'liq mahsulot yangilash, o'chirishlar)
+// 8. Callback query handler (inline tugmalar uchun) (KENGAYTIRILDI: kategoriya yangilash, kategoriya bo'yicha mahsulotlar, to'liq mahsulot yangilash, o'chirishlar; ORQAGA TUGMALARI OLIB TASHLANDI)
 // --------------------------------------------------------------------------------------
 
 bot.on('callback_query', async (callbackQuery) => {
@@ -734,8 +733,7 @@ bot.on('callback_query', async (callbackQuery) => {
                     inline_keyboard: [
                         [{ text: `Nomi: ${categoryData.name}`, callback_data: `update_category_name_${categoryId}` }],
                         [{ text: `Ikonka: ${categoryData.icon}`, callback_data: `update_category_icon_${categoryId}` }],
-                        [{ text: "🗑 Kategoriyani o'chirish", callback_data: `delete_category_${categoryId}` }],
-                        [{ text: "🔙 Orqaga", callback_data: 'back_to_main' }]
+                        [{ text: "🗑 Kategoriyani o'chirish", callback_data: `delete_category_${categoryId}` }]
                     ],
                 },
             };
@@ -744,7 +742,8 @@ bot.on('callback_query', async (callbackQuery) => {
                             `Hozirgi qiymatlar:\n` +
                             `• **Nomi:** ${categoryData.name}\n` +
                             `• **Ikonka:** ${categoryData.icon}\n\n` +
-                            `Nima o'zgartirishni xohlaysiz? (Tugmani bosing)`;
+                            `Nima o'zgartirishni xohlaysiz? (Tugmani bosing)\n\n` +
+                            `Bekor qilish uchun ❌ Bekor qilish ni bosing.`;
 
             bot.editMessageText(message, { 
                 chat_id: chatId, message_id: callbackQuery.message.message_id, 
@@ -762,7 +761,7 @@ bot.on('callback_query', async (callbackQuery) => {
     if (data.startsWith('update_category_name_')) {
         const categoryId = parseInt(data.replace('update_category_name_', ''));
         userState[chatId] = { step: 'update_category_name', data: { id: categoryId } };
-        bot.editMessageText('**Yangi kategoriya nomini** kiriting:', { 
+        bot.editMessageText('**Yangi kategoriya nomini** kiriting (Bekor qilish uchun ❌ Bekor qilish ni bosing):', { 
             chat_id: chatId, message_id: callbackQuery.message.message_id, parse_mode: 'Markdown'
         });
         bot.answerCallbackQuery(callbackQuery.id, { text: "Nom o'zgartirish tanlandi! Endi yangi nom yuboring." });
@@ -773,7 +772,7 @@ bot.on('callback_query', async (callbackQuery) => {
     if (data.startsWith('update_category_icon_')) {
         const categoryId = parseInt(data.replace('update_category_icon_', ''));
         userState[chatId] = { step: 'update_category_icon', data: { id: categoryId } };
-        bot.editMessageText('**Yangi kategoriya ikonka** (emoji) ni kiriting:', { 
+        bot.editMessageText('**Yangi kategoriya ikonka** (emoji) ni kiriting (Bekor qilish uchun ❌ Bekor qilish ni bosing):', { 
             chat_id: chatId, message_id: callbackQuery.message.message_id, parse_mode: 'Markdown'
         });
         bot.answerCallbackQuery(callbackQuery.id, { text: "Ikonka o'zgartirish tanlandi! Endi yangi ikonka yuboring." });
@@ -805,7 +804,7 @@ bot.on('callback_query', async (callbackQuery) => {
                     reply_markup: {
                         inline_keyboard: [
                             [{ text: `Ha, o'chir (shu bilan ${productsCount} ta mahsulot ham o'chadi)`, callback_data: `confirm_delete_category_${categoryId}` }],
-                            [{ text: "Yo'q, bekor qilish", callback_data: 'back_to_category_update' }]
+                            [{ text: "Yo'q, bekor qilish", callback_data: 'update_cancel' }]
                         ],
                     },
                 };
@@ -857,14 +856,6 @@ bot.on('callback_query', async (callbackQuery) => {
         return;
     }
 
-    // YANGI: Orqaga qaytish kategoriya yangilashga
-    if (data === 'back_to_category_update') {
-        // Kategoriyalar ro'yxatini qayta ko'rsatish
-        await handleCommand(chatId, "📂 Kategoriya yangilash");
-        bot.answerCallbackQuery(callbackQuery.id, { text: "Orqaga qaytildi." });
-        return;
-    }
-
     // YANGI: Mahsulot yangilash uchun kategoriya tanlash
     if (data.startsWith('select_category_')) {
         const categoryId = parseInt(data.replace('select_category_', ''));
@@ -899,24 +890,16 @@ bot.on('callback_query', async (callbackQuery) => {
                 }
                 inlineKeyboard.reply_markup.inline_keyboard.push(row);
             }
-            inlineKeyboard.reply_markup.inline_keyboard.push([{ text: "🔙 Orqaga", callback_data: 'back_to_categories' }]);
             
-            bot.editMessageText(`"${categoryData.name}" kategoriyasidagi mahsulotlar:\n\nQaysi mahsulotni yangilashni xohlaysiz?`, { 
+            bot.editMessageText(`"${categoryData.name}" kategoriyasidagi mahsulotlar:\n\nQaysi mahsulotni yangilashni xohlaysiz?\n\nBekor qilish uchun ❌ Bekor qilish ni bosing.`, { 
                 chat_id: chatId, message_id: callbackQuery.message.message_id, 
-                reply_markup: inlineKeyboard.reply_markup
+                reply_markup: inlineKeyboard.reply_markup, parse_mode: 'Markdown'
             });
             bot.answerCallbackQuery(callbackQuery.id, { text: "Kategoriya tanlandi! Mahsulot tanlang." });
         } catch (error) {
             console.error("Kategoriya mahsulotlarini olishda xato:", error);
             bot.answerCallbackQuery(callbackQuery.id, { text: "Xato yuz berdi!" });
         }
-        return;
-    }
-
-    // YANGI: Orqaga qaytish kategoriyalarga (mahsulot yangilash)
-    if (data === 'back_to_categories') {
-        await handleCommand(chatId, "🔄 Mahsulotni yangilash");
-        bot.answerCallbackQuery(callbackQuery.id, { text: "Orqaga qaytildi." });
         return;
     }
 
@@ -948,8 +931,7 @@ bot.on('callback_query', async (callbackQuery) => {
                         [{ text: `Karobka sig'imi: ${productData.boxCapacity} dona`, callback_data: `update_field_boxCapacity_${productId}` }],
                         [{ text: `Tavsif: ${productData.description ? productData.description.substring(0, 20) + '...' : 'Yo\'q'}`, callback_data: `update_field_description_${productId}` }],
                         [{ text: `Rasm: ${productData.image ? 'Bor' : 'Yo\'q'}`, callback_data: `update_field_image_${productId}` }],
-                        [{ text: "🗑 Mahsulotni o'chirish", callback_data: `delete_product_${productId}` }],
-                        [{ text: "🔙 Orqaga", callback_data: 'back_to_main' }]
+                        [{ text: "🗑 Mahsulotni o'chirish", callback_data: `delete_product_${productId}` }]
                     ],
                 },
             };
@@ -963,7 +945,8 @@ bot.on('callback_query', async (callbackQuery) => {
                             `• **Karobka sig'imi:** ${productData.boxCapacity} dona\n` +
                             `• **Tavsif:** ${productData.description || 'Belgilanmagan'}\n` +
                             `• **Rasm:** ${productData.image ? 'URL mavjud' : 'Yo\'q'}\n\n` +
-                            `Qaysi maydonni yangilashni xohlaysiz? (Tugmani bosing)`;
+                            `Qaysi maydonni yangilashni xohlaysiz? (Tugmani bosing)\n\n` +
+                            `Bekor qilish uchun ❌ Bekor qilish ni bosing.`;
 
             bot.editMessageText(message, { 
                 chat_id: chatId, message_id: callbackQuery.message.message_id, 
@@ -1001,18 +984,18 @@ bot.on('callback_query', async (callbackQuery) => {
 
         if (fieldType === 'description') {
             userState[chatId] = { step: 'update_product_description', data: { id: productId } };
-            bot.editMessageText(`**Yangi tavsif** ni kiriting:`, { 
+            bot.editMessageText(`**Yangi tavsif** ni kiriting (Bekor qilish uchun ❌ Bekor qilish ni bosing):`, { 
                 chat_id: chatId, message_id: callbackQuery.message.message_id, parse_mode: 'Markdown'
             });
         } else if (fieldType === 'image') {
             userState[chatId] = { step: 'update_product_image', data: { id: productId } };
-            bot.editMessageText('**Yangi rasm** yuboring (photo formatida):', { 
+            bot.editMessageText('**Yangi rasm** yuboring (photo formatida) (Bekor qilish uchun ❌ Bekor qilish ni bosing):', { 
                 chat_id: chatId, message_id: callbackQuery.message.message_id, parse_mode: 'Markdown'
             });
         } else {
             // update_value bosqichiga o'tkazish (raqamli maydonlar)
             userState[chatId] = { step: 'update_value', data: { id: productId, field: fieldType } };
-            bot.editMessageText(`**${fieldName}** uchun yangi qiymatni yuboring:`, { 
+            bot.editMessageText(`**${fieldName}** uchun yangi qiymatni yuboring (Bekor qilish uchun ❌ Bekor qilish ni bosing):`, { 
                 chat_id: chatId, message_id: callbackQuery.message.message_id, parse_mode: 'Markdown'
             });
         }
@@ -1050,16 +1033,6 @@ bot.on('callback_query', async (callbackQuery) => {
             chat_id: chatId, message_id: callbackQuery.message.message_id, parse_mode: 'Markdown'
         });
         bot.answerCallbackQuery(callbackQuery.id, { text: "Bekor qilindi!" });
-        return;
-    }
-
-    // Umumiy orqaga qaytish
-    if (data === 'back_to_main') {
-        resetUserState(chatId);
-        bot.editMessageText("Bosh menyu:", { 
-            chat_id: chatId, message_id: callbackQuery.message.message_id, reply_markup: mainKeyboard.reply_markup
-        });
-        bot.answerCallbackQuery(callbackQuery.id, { text: "Bosh menyu." });
         return;
     }
 });
