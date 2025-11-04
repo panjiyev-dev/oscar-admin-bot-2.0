@@ -326,7 +326,7 @@ bot.on('message', async (msg) => {
         return;
     }
 
-    // --- Mahsulot qo'shish bosqichlari (O'zgarishsiz) ---
+    // --- Mahsulot qo'shish bosqichlari (O'zgarishsiz, faqat kategoriya keyboard i o'zgartirildi) ---
     if (userState[chatId] && userState[chatId].step.startsWith('product_')) {
         const step = userState[chatId].step;
         let data = userState[chatId].data;
@@ -368,10 +368,10 @@ bot.on('message', async (msg) => {
                 }
                 data.discount = parseInt(text);
                 userState[chatId].step = 'product_category';
-                // Kategoriyalarni bir qatorda ko'rsatish
+                // Kategoriyalarni har birini alohida qatorga ko'rsatish
                 const categoryKeyboard = { 
                     reply_markup: { 
-                        keyboard: [data.categoryNames.map(name => ({ text: name }))], 
+                        keyboard: data.categoryNames.map(name => [{ text: name }]), 
                         resize_keyboard: true, 
                         one_time_keyboard: true 
                     } 
