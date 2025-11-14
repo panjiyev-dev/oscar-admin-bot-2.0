@@ -49,8 +49,7 @@ const mainKeyboard = {
         keyboard: [
             [{ text: "🛍 Mahsulot qo'shish" }, { text: "📂 Kategoriya qo'shish" }],
             [{ text: "📂 Kategoriya yangilash" }, { text: "🔄 Mahsulotni yangilash" }],
-            [{ text: "💱 Dollar kursini o'rnatish" }, { text: "📊 Ma'lumotlarni ko'rish" }],
-            [{ text: "❌ Bekor qilish" }],
+            [{ text: "📊 Ma'lumotlarni ko'rish" },{ text: "❌ Bekor qilish" }],
         ],
         resize_keyboard: true,
     },
@@ -182,7 +181,7 @@ async function handleCommand(chatId, text) {
     
     // Agar db ulanmagan bo'lsa, xabar berish
     if (!db) {
-        bot.sendMessage(chatId, "❌ Uzr, Firestore (Database) ulanishi xato bo'ldi. Admin sozlamalarini tekshiring.", mainKeyboard);
+        bot.sendMessage(chatId, "❌ Uzr,(Database) ulanishi xato bo'ldi. Admin sozlamalarini tekshiring.", mainKeyboard);
         return;
     }
 
