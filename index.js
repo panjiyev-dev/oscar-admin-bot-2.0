@@ -1231,55 +1231,61 @@ bot.on('callback_query', async (callbackQuery) => {
     }
 
     // TUZATILGAN: Mahsulot maydonlarini yangilash
-    if (data.startsWith('update_field_')) {
-        const parts = data.split('_');
-        const fieldType = parts[2];
-        const productIdStr = parts[3];
-        const productIdNum = parseInt(productIdStr);
-        const fieldMap = {
-            'name': 'Mahsulot nomi',
-            'pricePiece': 'Dona narxi (USD)',
-            'discount': 'Chegirma (%)',
-            'stock': 'Stock (dona)',
-            'boxCapacity': 'Karobka sig\'imi',
-            'description': 'Tavsif',
-            'image': 'Rasm'
+if (data.startsWith('update_field_')) {
+    const parts = data.split('_');
+    const fieldType = parts[2];
+    const productIdStr = parts[3];
+    const productIdNum = parseInt(productIdStr);
+    const fieldMap = {
+        'name': 'Mahsulot nomi',
+        'pricePiece': 'Dona narxi (USD)',
+        'discount': 'Chegirma (%)',
+        'stock': 'Stock (dona)',
+        'boxCapacity': 'Karobka sig\'imi',
+        'description': 'Tavsif',
+        'image': 'Rasm'
+    };
+    const fieldName = fieldMap[fieldType];
+    const currentState = userState[chatId] || { step: 'none', data: {}, steps: [] };
+    const oldSteps = currentState.steps || [];
+    const preserveData = {
+        selectedCategory: currentState.data.selectedCategory, // <<< SAQLAB QOLAMIZ
+        lastInlineMessageId: currentState.data.lastInlineMessageId,
+        messageId: messageId
+    };
+
+    if (fieldType === 'name') {
+        userState[chatId] = {
+            step: 'update_product_name',
+            data: { productId: productIdNum, ...preserveData },
+            steps: oldSteps
         };
-        const fieldName = fieldMap[fieldType];
-        const state = userState[chatId] || { step: 'none', data: {}, steps: [] };
-        const oldSteps = state.steps || [];
-        if (fieldType === 'name') {
-            userState[chatId] = {
-                step: 'update_product_name',
-                data: { productId: productIdNum, messageId: messageId },
-                steps: oldSteps
-            };
-            bot.sendMessage(chatId, `Yangi mahsulot nomini kiriting:`, backKeyboard);
-        } else if (fieldType === 'description') {
-            userState[chatId] = {
-                step: 'update_product_description',
-                data: { productId: productIdNum, messageId: messageId },
-                steps: oldSteps
-            };
-            bot.sendMessage(chatId, `Yangi tavsifni kiriting:`, backKeyboard);
-        } else if (fieldType === 'image') {
-            userState[chatId] = {
-                step: 'update_product_image',
-                data: { productId: productIdNum, messageId: messageId },
-                steps: oldSteps
-            };
-            bot.sendMessage(chatId, 'Yangi rasm yuboring (photo formatida):', mainBackKeyboard);
-        } else {
-            userState[chatId] = {
-                step: 'update_value',
-                data: { productId: productIdNum, field: fieldType, messageId: messageId },
-                steps: oldSteps
-            };
-            bot.sendMessage(chatId, `${fieldName} uchun yangi qiymatni yuboring:`, backKeyboard);
-        }
-        bot.answerCallbackQuery(callbackQuery.id, { text: `${fieldName} tanlandi!` });
-        return;
+        bot.sendMessage(chatId, `Yangi mahsulot nomini kiriting:`, backKeyboard);
+    } else if (fieldType === 'description') {
+        userState[chatId] = {
+            step: 'update_product_description',
+            data: { productId: productIdNum, ...preserveData },
+            steps: oldSteps
+        };
+        bot.sendMessage(chatId, `Yangi tavsifni kiriting:`, backKeyboard);
+    } else if (fieldType === 'image') {
+        userState[chatId] = {
+            step: 'update_product_image',
+            data: { productId: productIdNum, ...preserveData },
+            steps: oldSteps
+        };
+        bot.sendMessage(chatId, 'Yangi rasm yuboring (photo formatida):', mainBackKeyboard);
+    } else {
+        userState[chatId] = {
+            step: 'update_value',
+            data: { productId: productIdNum, field: fieldType, ...preserveData },
+            steps: oldSteps
+        };
+        bot.sendMessage(chatId, `${fieldName} uchun yangi qiymatni yuboring:`, backKeyboard);
     }
+    bot.answerCallbackQuery(callbackQuery.id, { text: `${fieldName} tanlandi!` });
+    return;
+}
 
     // Mahsulotni o'chirish
     if (data.startsWith('delete_product_')) {
