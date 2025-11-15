@@ -129,7 +129,8 @@ async function getProductsInCategory(categoryName) {
 }
 
 function resetUserState(chatId) {
-    userState[chatId] = { step: 'none',  {}, steps: [] };
+    // ✅ XATO TUZATILDI: data: {} qo'shildi
+    userState[chatId] = { step: 'none', data: {}, steps: [] };
 }
 
 // TUZATILGAN: Orqaga qaytish handler - Mahsulot yangilash jarayonida ham to'g'ri ishlaydi
@@ -267,10 +268,10 @@ async function showCategoryView(chatId, categoryId, messageId) {
         const updateKeyboard = {
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: `Nomi: ${categoryData.name}`, callback_ `cat_update_name_${categoryId}` }],
-                    [{ text: `Ikonka: ${categoryData.icon}`, callback_ `cat_update_icon_${categoryId}` }],
+                    [{ text: `Nomi: ${categoryData.name}`, callback_data: `cat_update_name_${categoryId}` }],
+                    [{ text: `Ikonka: ${categoryData.icon}`, callback_data: `cat_update_icon_${categoryId}` }],
                     [{ text: "🗑 Kategoriyani o'chirish", callback_data: `delete_category_${categoryId}` }],
-                    [{ text: "⬅️ Orqaga", callback_ 'back_to_prev' }]
+                    [{ text: "⬅️ Orqaga", callback_data: 'back_to_prev' }]
                 ],
             },
         };
@@ -315,15 +316,15 @@ async function showProductView(chatId, productId, messageId) {
         const updateKeyboard = {
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: `Nomi: ${productData.name}`, callback_ `update_field_name_${productId}` }],
-                    [{ text: `Dona narxi: ${productData.pricePiece.toFixed(2)} $`, callback_ `update_field_pricePiece_${productId}` }],
+                    [{ text: `Nomi: ${productData.name}`, callback_data: `update_field_name_${productId}` }],
+                    [{ text: `Dona narxi: ${productData.pricePiece.toFixed(2)} $`, callback_data: `update_field_pricePiece_${productId}` }],
                     [{ text: `Chegirma: ${productData.discount}%`, callback_data: `update_field_discount_${productId}` }],
                     [{ text: `Stock: ${productData.stock.toLocaleString()} dona`, callback_data: `update_field_stock_${productId}` }],
-                    [{ text: `Karobka sig'imi: ${productData.boxCapacity} dona`, callback_ `update_field_boxCapacity_${productId}` }],
-                    [{ text: `Tavsif: ${productData.description ? productData.description.substring(0, 20) + '...' : 'Yo\'q'}`, callback_ `update_field_description_${productId}` }],
-                    [{ text: `Rasm: ${productData.image ? 'Bor' : 'Yo\'q'}`, callback_ `update_field_image_${productId}` }],
+                    [{ text: `Karobka sig'imi: ${productData.boxCapacity} dona`, callback_data: `update_field_boxCapacity_${productId}` }],
+                    [{ text: `Tavsif: ${productData.description ? productData.description.substring(0, 20) + '...' : 'Yo\'q'}`, callback_data: `update_field_description_${productId}` }],
+                    [{ text: `Rasm: ${productData.image ? 'Bor' : 'Yo\'q'}`, callback_data: `update_field_image_${productId}` }],
                     [{ text: "🗑 Mahsulotni o'chirish", callback_data: `delete_product_${productId}` }],
-                    [{ text: "⬅️ Orqaga", callback_ 'back_to_prev' }]
+                    [{ text: "⬅️ Orqaga", callback_data: 'back_to_prev' }]
                 ],
             },
         };
@@ -384,7 +385,7 @@ async function showCategoryUpdateSelect(chatId, messageId = null) {
 
         const inlineKeyboard = { reply_markup: { inline_keyboard: [] } };
         for (let i = 0; i < categories.length; i += 2) {
-            const row = [{ text: `${categories[i].icon} ${categories[i].name}`, callback_ `cat_select_${categories[i].id}` }];
+            const row = [{ text: `${categories[i].icon} ${categories[i].name}`, callback_data: `cat_select_${categories[i].id}` }];
             if (i + 1 < categories.length) {
                 row.push({ text: `${categories[i + 1].icon} ${categories[i + 1].name}`, callback_data: `cat_select_${categories[i + 1].id}` });
             }
@@ -429,7 +430,7 @@ async function showProductUpdateCategorySelect(chatId, messageId = null) {
 
         const inlineKeyboard = { reply_markup: { inline_keyboard: [] } };
         for (let i = 0; i < categories.length; i += 2) {
-            const row = [{ text: `${categories[i].icon} ${categories[i].name}`, callback_ `select_category_${categories[i].id}` }];
+            const row = [{ text: `${categories[i].icon} ${categories[i].name}`, callback_data: `select_category_${categories[i].id}` }];
             if (i + 1 < categories.length) {
                 row.push({ text: `${categories[i + 1].icon} ${categories[i + 1].name}`, callback_data: `select_category_${categories[i + 1].id}` });
             }
@@ -475,13 +476,13 @@ async function showProductsInCategory(chatId, categoryName, messageId = null) {
 
         const inlineKeyboard = { reply_markup: { inline_keyboard: [] } };
         for (let i = 0; i < products.length; i += 2) {
-            const row = [{ text: products[i].name, callback_ `update_product_${products[i].id}` }];
+            const row = [{ text: products[i].name, callback_data: `update_product_${products[i].id}` }];
             if (i + 1 < products.length) {
-                row.push({ text: products[i + 1].name, callback_ `update_product_${products[i + 1].id}` });
+                row.push({ text: products[i + 1].name, callback_data: `update_product_${products[i + 1].id}` });
             }
             inlineKeyboard.reply_markup.inline_keyboard.push(row);
         }
-        inlineKeyboard.reply_markup.inline_keyboard.push([{ text: "⬅️ Orqaga", callback_ 'back_to_prev' }]);
+        inlineKeyboard.reply_markup.inline_keyboard.push([{ text: "⬅️ Orqaga", callback_data: 'back_to_prev' }]);
 
         const text = `"${categoryName}" kategoriyasidagi mahsulotlar:
 Qaysi mahsulotni yangilashni xohlaysiz?`;
@@ -523,12 +524,12 @@ async function handleCommand(chatId, text) {
             bot.sendMessage(chatId, "Avval kategoriya qo'shing. '📂 Kategoriya qo'shish' ni tanlang.", mainKeyboard);
             return;
         }
-        userState[chatId] = { step: 'product_name',  { categoryNames, priceBox: 0 }, steps: [] };
+        userState[chatId] = { step: 'product_name', data: { categoryNames, priceBox: 0 }, steps: [] };
         bot.sendMessage(chatId, "1/8. Mahsulot nomini kiriting:", backKeyboard);
         return;
     }
     if (text === "📂 Kategoriya qo'shish") {
-        userState[chatId] = { step: 'category_name',  {}, steps: [] };
+        userState[chatId] = { step: 'category_name', data: {}, steps: [] };
         bot.sendMessage(chatId, "1/2. Kategoriya nomini kiriting (mas: Oziq-ovqat):", backKeyboard);
         return;
     }
@@ -543,7 +544,7 @@ async function handleCommand(chatId, text) {
         return;
     }
     if (text === "🔄 Mahsulotni yangilash") {
-        userState[chatId] = { step: 'product_update_category_select',  {}, steps: [] };
+        userState[chatId] = { step: 'product_update_category_select', data: {}, steps: [] };
         await showProductUpdateCategorySelect(chatId);
         return;
     }
@@ -1085,7 +1086,7 @@ bot.on('callback_query', async (callbackQuery) => {
                 bot.answerCallbackQuery(callbackQuery.id, { text: "Kategoriya topilmadi!" });
                 return;
             }
-            const state = userState[chatId] || { step: 'none',  {}, steps: [] };
+            const state = userState[chatId] || { step: 'none', data: {}, steps: [] };
             state.steps.push(state.step);
             state.step = 'category_update_view';
             state.data.categoryId = categoryIdNum;
@@ -1104,12 +1105,12 @@ bot.on('callback_query', async (callbackQuery) => {
     if (data.startsWith('cat_update_name_')) {
         const categoryIdStr = data.replace('cat_update_name_', '');
         const categoryIdNum = parseInt(categoryIdStr);
-        const state = userState[chatId] || { step: 'none',  {}, steps: [] };
+        const state = userState[chatId] || { step: 'none', data: {}, steps: [] };
         // Oldingi state'dan steps'ni saqlab qolish
         const oldSteps = state.steps || [];
         userState[chatId] = {
             step: 'update_category_name',
-             { categoryId: categoryIdNum, messageId: messageId },
+            data: { categoryId: categoryIdNum, messageId: messageId },
             steps: oldSteps
         };
         bot.sendMessage(chatId, 'Yangi kategoriya nomini kiriting:', backKeyboard);
@@ -1121,12 +1122,12 @@ bot.on('callback_query', async (callbackQuery) => {
     if (data.startsWith('cat_update_icon_')) {
         const categoryIdStr = data.replace('cat_update_icon_', '');
         const categoryIdNum = parseInt(categoryIdStr);
-        const state = userState[chatId] || { step: 'none',  {}, steps: [] };
+        const state = userState[chatId] || { step: 'none', data: {}, steps: [] };
         // Oldingi state'dan steps'ni saqlab qolish
         const oldSteps = state.steps || [];
         userState[chatId] = {
             step: 'update_category_icon',
-             { categoryId: categoryIdNum, messageId: messageId },
+            data: { categoryId: categoryIdNum, messageId: messageId },
             steps: oldSteps
         };
         bot.sendMessage(chatId, 'Yangi kategoriya ikonka (emoji) ni kiriting:', backKeyboard);
@@ -1157,7 +1158,7 @@ bot.on('callback_query', async (callbackQuery) => {
                     reply_markup: {
                         inline_keyboard: [
                             [{ text: `Ha, o'chir (${productsCount} ta mahsulot ham o'chadi)`, callback_data: `confirm_delete_category_${categoryIdNum}` }],
-                            [{ text: "Yo'q, bekor qilish", callback_ 'back_to_prev' }]
+                            [{ text: "Yo'q, bekor qilish", callback_data: 'back_to_prev' }]
                         ],
                     },
                 };
@@ -1190,7 +1191,7 @@ bot.on('callback_query', async (callbackQuery) => {
                 return;
             }
             const categoryData = doc.data();
-            const state = userState[chatId] || { step: 'none',  {}, steps: [] };
+            const state = userState[chatId] || { step: 'none', data: {}, steps: [] };
             state.steps.push(state.step);
             state.step = 'product_update_product_select';
             state.data.selectedCategory = categoryData.name;
@@ -1215,7 +1216,7 @@ bot.on('callback_query', async (callbackQuery) => {
                 bot.answerCallbackQuery(callbackQuery.id, { text: "Mahsulot topilmadi!" });
                 return;
             }
-            const state = userState[chatId] || { step: 'none',  {}, steps: [] };
+            const state = userState[chatId] || { step: 'none', data: {}, steps: [] };
             state.steps.push(state.step);
             state.step = 'product_update_view';
             state.data.productId = productIdNum;
@@ -1246,26 +1247,26 @@ bot.on('callback_query', async (callbackQuery) => {
             'image': 'Rasm'
         };
         const fieldName = fieldMap[fieldType];
-        const state = userState[chatId] || { step: 'none',  {}, steps: [] };
+        const state = userState[chatId] || { step: 'none', data: {}, steps: [] };
         const oldSteps = state.steps || [];
         if (fieldType === 'name') {
             userState[chatId] = {
                 step: 'update_product_name',
-                 { productId: productIdNum, messageId: messageId },
+                data: { productId: productIdNum, messageId: messageId },
                 steps: oldSteps
             };
             bot.sendMessage(chatId, `Yangi mahsulot nomini kiriting:`, backKeyboard);
         } else if (fieldType === 'description') {
             userState[chatId] = {
                 step: 'update_product_description',
-                 { productId: productIdNum, messageId: messageId },
+                data: { productId: productIdNum, messageId: messageId },
                 steps: oldSteps
             };
             bot.sendMessage(chatId, `Yangi tavsifni kiriting:`, backKeyboard);
         } else if (fieldType === 'image') {
             userState[chatId] = {
                 step: 'update_product_image',
-                 { productId: productIdNum, messageId: messageId },
+                data: { productId: productIdNum, messageId: messageId },
                 steps: oldSteps
             };
             bot.sendMessage(chatId, 'Yangi rasm yuboring (photo formatida):', mainBackKeyboard);
