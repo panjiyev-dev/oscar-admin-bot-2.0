@@ -129,7 +129,6 @@ async function getProductsInCategory(categoryName) {
 }
 
 function resetUserState(chatId) {
-    // ✅ XATO TUZATILDI: data: {} qo'shildi
     userState[chatId] = { step: 'none', data: {}, steps: [] };
 }
 
