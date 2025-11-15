@@ -9,6 +9,7 @@ const FormData = require('form-data');
 // 2. Maxfiy ma'lumotlarni Environment Variables (Railway) dan olish
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN || '7586941333:AAHKly13Z3M5qkyKjP-6x-thWvXdJudIHsU';
 const IMGBB_API_KEY = process.env.IMGBB_API_KEY || '38fcdca0b624f0123f15491175c8bd78';
+
 // Admin ID'lar stringdan Arrayga o'tkaziladi
 const admins = (process.env.ADMIN_IDS || '5761225998,7122472578').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 
@@ -22,6 +23,7 @@ try {
     }
     // 2. JSON stringni JS obyektiga aylantirish
     const serviceAccount = JSON.parse(serviceAccountJson);
+
     // 3. Firebase'ni sozlash
     admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
@@ -34,6 +36,7 @@ try {
 }
 
 const bot = new TelegramBot(TOKEN, { polling: true });
+
 const userState = {}; // Foydalanuvchi holatini saqlash
 
 // 4. Asosiy boshqaruv klaviaturasi
@@ -70,7 +73,6 @@ const mainBackKeyboard = {
 
 // 5. Yordamchi funksiyalar
 // --------------------------------------------------------------------------------------
-
 async function getNextId(collectionName) {
     if (!db) return -1;
     try {
@@ -98,9 +100,11 @@ async function uploadToImgBB(fileId) {
             filename: 'product_image.jpg',
             contentType: 'image/jpeg'
         });
+
         const uploadResponse = await axios.post('https://api.imgbb.com/1/upload', form, {
             headers: { ...form.getHeaders() }
         });
+
         if (uploadResponse.data.success) {
             return uploadResponse.data.data.url;
         } else {
@@ -125,10 +129,10 @@ async function getProductsInCategory(categoryName) {
 }
 
 function resetUserState(chatId) {
-    userState[chatId] = { step: 'none', data: {}, steps: [] };
+    userState[chatId] = { step: 'none',  {}, steps: [] };
 }
 
-// TUZATILGAN: Orqaga qaytish handler
+// TUZATILGAN: Orqaga qaytish handler - Mahsulot yangilash jarayonida ham to'g'ri ishlaydi
 async function handleBack(chatId) {
     const state = userState[chatId];
     if (!state || state.steps.length === 0) {
@@ -136,38 +140,75 @@ async function handleBack(chatId) {
         bot.sendMessage(chatId, "Bosh menyu.", mainKeyboard);
         return;
     }
-    
     const prevStep = state.steps.pop();
     state.step = prevStep;
-    
-    console.log(`Going back to: ${prevStep}, remaining steps: ${state.steps.length}`);
-    
-    if (prevStep.startsWith('product_')) {
-        await handleProductStep(chatId, prevStep, true);
-    } else if (prevStep.startsWith('category_')) {
-        await handleCategoryStep(chatId, prevStep, true);
-    } else if (prevStep === 'category_update_select') {
-        await showCategoryUpdateSelect(chatId);
-    } else if (prevStep === 'product_update_category_select') {
-        await showProductUpdateCategorySelect(chatId);
+    console.log(`Orqaga qaytildi: ${prevStep}, qolgan qadamlar: ${state.steps.length}`);
+
+    // Mahsulot yangilash jarayonidagi qadamlar uchun
+    if (prevStep === 'product_update_view') {
+        await showProductView(chatId, state.data.productId, state.data.messageId);
     } else if (prevStep === 'product_update_product_select') {
         const categoryName = state.data.selectedCategory;
         if (categoryName) {
-            await showProductsInCategory(chatId, categoryName);
+            await showProductsInCategory(chatId, categoryName, state.data.messageId);
         } else {
-            await showProductUpdateCategorySelect(chatId);
+            // Agar categoryName saqlanmagan bo'lsa, kategoriyalarni tanlashga qaytish mantiqsiz, shuning uchun bekor qilish
+            resetUserState(chatId);
+            bot.sendMessage(chatId, "Jarayon bekor qilindi. Bosh menyu.", mainKeyboard);
         }
-    } else if (prevStep === 'category_update_view') {
-        await showCategoryView(chatId, state.data.categoryId, state.data.messageId);
-    } else if (prevStep === 'product_update_view') {
+    } else if (prevStep === 'product_update_category_select') {
+         // Agar inline menyudan foydalangan bo'lsak, editMessageText kerak
+         const lastMessageId = state.data.lastInlineMessageId || state.data.messageId; // Foydalanish tartibiga qarab
+         if (lastMessageId) {
+             bot.editMessageText("Mahsulot yangilash bekor qilindi. Bosh menyu.", {
+                 chat_id: chatId,
+                 message_id: lastMessageId,
+                 parse_mode: 'Markdown'
+             });
+         }
+         resetUserState(chatId);
+         bot.sendMessage(chatId, "Bosh menyu.", mainKeyboard);
+    } else if (prevStep === 'update_product_name' ||
+               prevStep === 'update_product_description' ||
+               prevStep === 'update_product_image' ||
+               prevStep === 'update_value') {
+        // Agar foydalanuvchi kirish jarayonida "Orqaga" bostaysa, bu ham o'zgartirish menyusiga qaytadi
         await showProductView(chatId, state.data.productId, state.data.messageId);
-    } else {
+    }
+    // Kategoriya yangilash jarayonidagi qadamlar uchun
+     else if (prevStep === 'category_update_view') {
+        await showCategoryView(chatId, state.data.categoryId, state.data.messageId);
+    } else if (prevStep === 'category_update_select') {
+         const lastMessageId = state.data.lastInlineMessageId || state.data.messageId;
+         if (lastMessageId) {
+             bot.editMessageText("Kategoriya yangilash bekor qilindi. Bosh menyu.", {
+                 chat_id: chatId,
+                 message_id: lastMessageId,
+                 parse_mode: 'Markdown'
+             });
+         }
+         resetUserState(chatId);
+         bot.sendMessage(chatId, "Bosh menyu.", mainKeyboard);
+    } else if (prevStep === 'update_category_name' ||
+               prevStep === 'update_category_icon') {
+        await showCategoryView(chatId, state.data.categoryId, state.data.messageId);
+    }
+    // Mahsulot qo'shish jarayoni uchun
+    else if (prevStep.startsWith('product_')) {
+        await handleProductStep(chatId, prevStep, true);
+    }
+    // Kategoriya qo'shish jarayoni uchun
+    else if (prevStep.startsWith('category_')) {
+        await handleCategoryStep(chatId, prevStep, true);
+    }
+    else {
+        // Agar boshqa qadam bo'lsa hammasi bekor qilinsin
+        resetUserState(chatId);
         bot.sendMessage(chatId, "Bosh menyu.", mainKeyboard);
-        state.step = 'none';
     }
 }
 
-// TUZATILGAN: Inline orqaga handler
+// TUZATILGAN: Inline orqaga handler - asl holatda saqlangan messageId dan foydalanadi
 async function handleInlineBack(chatId, messageId) {
     const state = userState[chatId];
     if (!state || state.steps.length === 0) {
@@ -180,12 +221,10 @@ async function handleInlineBack(chatId, messageId) {
         bot.sendMessage(chatId, "Bosh menyu.", mainKeyboard);
         return;
     }
-    
     const prevStep = state.steps.pop();
     state.step = prevStep;
-    
-    console.log(`Inline back to: ${prevStep}, remaining steps: ${state.steps.length}`);
-    
+    console.log(`Inline orqaga qaytildi: ${prevStep}, qolgan qadamlar: ${state.steps.length}`);
+
     if (prevStep === 'category_update_select') {
         await showCategoryUpdateSelect(chatId, messageId);
     } else if (prevStep === 'product_update_category_select') {
@@ -202,6 +241,7 @@ async function handleInlineBack(chatId, messageId) {
     } else if (prevStep === 'product_update_view') {
         await showProductView(chatId, state.data.productId, messageId);
     } else {
+        // Boshqa hollarda hammasi bekor qilinsin
         resetUserState(chatId);
         bot.editMessageText("Yangilash bekor qilindi. Bosh menyu.", {
             chat_id: chatId,
@@ -227,19 +267,22 @@ async function showCategoryView(chatId, categoryId, messageId) {
         const updateKeyboard = {
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: `Nomi: ${categoryData.name}`, callback_data: `cat_update_name_${categoryId}` }],
-                    [{ text: `Ikonka: ${categoryData.icon}`, callback_data: `cat_update_icon_${categoryId}` }],
+                    [{ text: `Nomi: ${categoryData.name}`, callback_ `cat_update_name_${categoryId}` }],
+                    [{ text: `Ikonka: ${categoryData.icon}`, callback_ `cat_update_icon_${categoryId}` }],
                     [{ text: "🗑 Kategoriyani o'chirish", callback_data: `delete_category_${categoryId}` }],
-                    [{ text: "⬅️ Orqaga", callback_data: 'back_to_prev' }]
+                    [{ text: "⬅️ Orqaga", callback_ 'back_to_prev' }]
                 ],
             },
         };
-        const message = `📝 Kategoriya: ${categoryData.icon} ${categoryData.name} (ID: ${categoryId})\n\n` +
-                        `Hozirgi qiymatlar:\n` +
-                        `• Nomi: ${categoryData.name}\n` +
-                        `• Ikonka: ${categoryData.icon}\n\n` +
+        const message = `📝 Kategoriya: ${categoryData.icon} ${categoryData.name} (ID: ${categoryId})
+` +
+                        `Hozirgi qiymatlar:
+` +
+                        `• Nomi: ${categoryData.name}
+` +
+                        `• Ikonka: ${categoryData.icon}
+` +
                         `Nima o'zgartirishni xohlaysiz? (Tugmani bosing)`;
-        
         if (messageId) {
             bot.editMessageText(message, {
                 chat_id: chatId, message_id: messageId,
@@ -272,29 +315,37 @@ async function showProductView(chatId, productId, messageId) {
         const updateKeyboard = {
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: `Nomi: ${productData.name}`, callback_data: `update_field_name_${productId}` }],
-                    [{ text: `Dona narxi: ${productData.pricePiece.toFixed(2)} $`, callback_data: `update_field_pricePiece_${productId}` }],
+                    [{ text: `Nomi: ${productData.name}`, callback_ `update_field_name_${productId}` }],
+                    [{ text: `Dona narxi: ${productData.pricePiece.toFixed(2)} $`, callback_ `update_field_pricePiece_${productId}` }],
                     [{ text: `Chegirma: ${productData.discount}%`, callback_data: `update_field_discount_${productId}` }],
                     [{ text: `Stock: ${productData.stock.toLocaleString()} dona`, callback_data: `update_field_stock_${productId}` }],
-                    [{ text: `Karobka sig'imi: ${productData.boxCapacity} dona`, callback_data: `update_field_boxCapacity_${productId}` }],
-                    [{ text: `Tavsif: ${productData.description ? productData.description.substring(0, 20) + '...' : 'Yo\'q'}`, callback_data: `update_field_description_${productId}` }],
-                    [{ text: `Rasm: ${productData.image ? 'Bor' : 'Yo\'q'}`, callback_data: `update_field_image_${productId}` }],
+                    [{ text: `Karobka sig'imi: ${productData.boxCapacity} dona`, callback_ `update_field_boxCapacity_${productId}` }],
+                    [{ text: `Tavsif: ${productData.description ? productData.description.substring(0, 20) + '...' : 'Yo\'q'}`, callback_ `update_field_description_${productId}` }],
+                    [{ text: `Rasm: ${productData.image ? 'Bor' : 'Yo\'q'}`, callback_ `update_field_image_${productId}` }],
                     [{ text: "🗑 Mahsulotni o'chirish", callback_data: `delete_product_${productId}` }],
-                    [{ text: "⬅️ Orqaga", callback_data: 'back_to_prev' }]
+                    [{ text: "⬅️ Orqaga", callback_ 'back_to_prev' }]
                 ],
             },
         };
-        const message = `📝 Mahsulot: ${productData.name} (ID: ${productId})\n\n` +
-                        `Hozirgi qiymatlar:\n` +
-                        `• Nomi: ${productData.name}\n` +
-                        `• Dona narxi: ${productData.pricePiece.toFixed(2)} $\n` +
-                        `• Chegirma: ${productData.discount}%\n` +
-                        `• Stock: ${productData.stock.toLocaleString()} dona\n` +
-                        `• Karobka sig'imi: ${productData.boxCapacity} dona\n` +
-                        `• Tavsif: ${productData.description || 'Belgilanmagan'}\n` +
-                        `• Rasm: ${productData.image ? 'URL mavjud' : 'Yo\'q'}\n\n` +
+        const message = `📝 Mahsulot: ${productData.name} (ID: ${productId})
+` +
+                        `Hozirgi qiymatlar:
+` +
+                        `• Nomi: ${productData.name}
+` +
+                        `• Dona narxi: ${productData.pricePiece.toFixed(2)} $
+` +
+                        `• Chegirma: ${productData.discount}%
+` +
+                        `• Stock: ${productData.stock.toLocaleString()} dona
+` +
+                        `• Karobka sig'imi: ${productData.boxCapacity} dona
+` +
+                        `• Tavsif: ${productData.description || 'Belgilanmagan'}
+` +
+                        `• Rasm: ${productData.image ? 'URL mavjud' : 'Yo\'q'}
+` +
                         `Qaysi maydonni yangilashni xohlaysiz? (Tugmani bosing)`;
-        
         if (messageId) {
             bot.editMessageText(message, {
                 chat_id: chatId, message_id: messageId,
@@ -330,9 +381,10 @@ async function showCategoryUpdateSelect(chatId, messageId = null) {
             const data = doc.data();
             return { id: data.id, name: data.name, icon: data.icon };
         });
+
         const inlineKeyboard = { reply_markup: { inline_keyboard: [] } };
         for (let i = 0; i < categories.length; i += 2) {
-            const row = [{ text: `${categories[i].icon} ${categories[i].name}`, callback_data: `cat_select_${categories[i].id}` }];
+            const row = [{ text: `${categories[i].icon} ${categories[i].name}`, callback_ `cat_select_${categories[i].id}` }];
             if (i + 1 < categories.length) {
                 row.push({ text: `${categories[i + 1].icon} ${categories[i + 1].name}`, callback_data: `cat_select_${categories[i + 1].id}` });
             }
@@ -374,9 +426,10 @@ async function showProductUpdateCategorySelect(chatId, messageId = null) {
             const data = doc.data();
             return { id: data.id, name: data.name, icon: data.icon };
         });
+
         const inlineKeyboard = { reply_markup: { inline_keyboard: [] } };
         for (let i = 0; i < categories.length; i += 2) {
-            const row = [{ text: `${categories[i].icon} ${categories[i].name}`, callback_data: `select_category_${categories[i].id}` }];
+            const row = [{ text: `${categories[i].icon} ${categories[i].name}`, callback_ `select_category_${categories[i].id}` }];
             if (i + 1 < categories.length) {
                 row.push({ text: `${categories[i + 1].icon} ${categories[i + 1].name}`, callback_data: `select_category_${categories[i + 1].id}` });
             }
@@ -408,31 +461,30 @@ async function showProductsInCategory(chatId, categoryName, messageId = null) {
             const text = `"${categoryName}" kategoriyasida hech qanday mahsulot yo'q.`;
             if (messageId) {
                 bot.editMessageText(text, { chat_id: chatId, message_id: messageId });
-                setTimeout(() => {
-                    showProductUpdateCategorySelect(chatId);
-                }, 1000);
-            } else {
-                bot.sendMessage(chatId, text, mainKeyboard);
+                // Agar mahsulotlar bo'lmasa ham, yana kategoriyalarni tanlash menyusiga qaytish kerak emas, bekor qilish kerak
+                // Shuning uchun tepada qo'shimcha setTimeout olib tashlandi
             }
+            bot.sendMessage(chatId, text, mainKeyboard);
+            resetUserState(chatId); // Bo'sh kategoriyada bekor qilish kerak
             return;
         }
-        
         const products = productsSnapshot.docs.map(pDoc => {
             const pData = pDoc.data();
             return { id: pData.id, name: pData.name };
         });
-        
+
         const inlineKeyboard = { reply_markup: { inline_keyboard: [] } };
         for (let i = 0; i < products.length; i += 2) {
-            const row = [{ text: products[i].name, callback_data: `update_product_${products[i].id}` }];
+            const row = [{ text: products[i].name, callback_ `update_product_${products[i].id}` }];
             if (i + 1 < products.length) {
-                row.push({ text: products[i + 1].name, callback_data: `update_product_${products[i + 1].id}` });
+                row.push({ text: products[i + 1].name, callback_ `update_product_${products[i + 1].id}` });
             }
             inlineKeyboard.reply_markup.inline_keyboard.push(row);
         }
-        inlineKeyboard.reply_markup.inline_keyboard.push([{ text: "⬅️ Orqaga", callback_data: 'back_to_prev' }]);
-        
-        const text = `"${categoryName}" kategoriyasidagi mahsulotlar:\n\nQaysi mahsulotni yangilashni xohlaysiz?`;
+        inlineKeyboard.reply_markup.inline_keyboard.push([{ text: "⬅️ Orqaga", callback_ 'back_to_prev' }]);
+
+        const text = `"${categoryName}" kategoriyasidagi mahsulotlar:
+Qaysi mahsulotni yangilashni xohlaysiz?`;
         if (messageId) {
             bot.editMessageText(text, {
                 chat_id: chatId, message_id: messageId,
@@ -441,7 +493,6 @@ async function showProductsInCategory(chatId, categoryName, messageId = null) {
         } else {
             bot.sendMessage(chatId, text, inlineKeyboard);
         }
-        
         const state = userState[chatId];
         if (state) {
             state.data.selectedCategory = categoryName;
@@ -461,12 +512,10 @@ async function showProductsInCategory(chatId, categoryName, messageId = null) {
 // Tugma buyruqlarini qayta ishlash funksiyasi
 async function handleCommand(chatId, text) {
     resetUserState(chatId);
-   
     if (!db) {
         bot.sendMessage(chatId, "❌ Uzr, Database ulanishi xato bo'ldi. Admin sozlamalarini tekshiring.", mainKeyboard);
         return;
     }
-    
     if (text === "🛍 Mahsulot qo'shish") {
         const categoriesSnapshot = await db.collection('categories').get();
         const categoryNames = categoriesSnapshot.docs.map(doc => doc.data().name);
@@ -474,44 +523,41 @@ async function handleCommand(chatId, text) {
             bot.sendMessage(chatId, "Avval kategoriya qo'shing. '📂 Kategoriya qo'shish' ni tanlang.", mainKeyboard);
             return;
         }
-        userState[chatId] = { step: 'product_name', data: { categoryNames, priceBox: 0 }, steps: [] };
+        userState[chatId] = { step: 'product_name',  { categoryNames, priceBox: 0 }, steps: [] };
         bot.sendMessage(chatId, "1/8. Mahsulot nomini kiriting:", backKeyboard);
         return;
     }
-    
     if (text === "📂 Kategoriya qo'shish") {
-        userState[chatId] = { step: 'category_name', data: {}, steps: [] };
+        userState[chatId] = { step: 'category_name',  {}, steps: [] };
         bot.sendMessage(chatId, "1/2. Kategoriya nomini kiriting (mas: Oziq-ovqat):", backKeyboard);
         return;
     }
-    
     if (text === "📂 Kategoriya yangilash") {
         userState[chatId] = { step: 'category_update_select', data: {}, steps: [] };
         await showCategoryUpdateSelect(chatId);
         return;
     }
-   
     if (text === "❌ Bekor qilish") {
         resetUserState(chatId);
         bot.sendMessage(chatId, "Joriy amal bekor qilindi.", mainKeyboard);
         return;
     }
-    
     if (text === "🔄 Mahsulotni yangilash") {
-        userState[chatId] = { step: 'product_update_category_select', data: {}, steps: [] };
+        userState[chatId] = { step: 'product_update_category_select',  {}, steps: [] };
         await showProductUpdateCategorySelect(chatId);
         return;
     }
-    
     if (text === "📊 Ma'lumotlarni ko'rish") {
         try {
             const productsSnapshot = await db.collection('products').get();
             const categoriesSnapshot = await db.collection('categories').get();
-            
             bot.sendMessage(chatId,
-                `📊 Statistika:\n\n` +
-                `🔹 Mahsulotlar soni: ${productsSnapshot.size.toLocaleString()} ta\n` +
-                `🔹 Kategoriyalar soni: ${categoriesSnapshot.size.toLocaleString()} ta\n\n` +
+                `📊 Statistika:
+` +
+                `🔹 Mahsulotlar soni: ${productsSnapshot.size.toLocaleString()} ta
+` +
+                `🔹 Kategoriyalar soni: ${categoriesSnapshot.size.toLocaleString()} ta
+` +
                 `Barcha ma'lumotlar Firestore (Firebase) da saqlanmoqda.`,
                 { ...mainKeyboard, parse_mode: 'Markdown' }
             );
@@ -521,7 +567,6 @@ async function handleCommand(chatId, text) {
         }
         return;
     }
-    
     bot.sendMessage(chatId, "Tushunmadim. Iltimos, quyidagi tugmalardan birini tanlang:", mainKeyboard);
 }
 
@@ -610,17 +655,15 @@ bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
     const text = msg.text;
     const photo = msg.photo;
-    
+
     if (!admins.includes(chatId)) {
         bot.sendMessage(chatId, "Bu bot faqat administratorlar uchun mo'ljallangan.");
         return;
     }
-   
     if (!db) {
         bot.sendMessage(chatId, "❌ Uzr, Database ulanishi yo'q. Avval Railway Variables ni tekshiring.");
         return;
     }
-    
     if (text && text.startsWith('/')) {
         if (text === '/start') {
             resetUserState(chatId);
@@ -630,30 +673,26 @@ bot.on('message', async (msg) => {
         }
         return;
     }
-    
     if (text === "Orqaga") {
         await handleBack(chatId);
         return;
     }
-    
     if (text && commandButtons.includes(text)) {
         await handleCommand(chatId, text);
         return;
     }
-    
     if (photo && !text) {
         return bot.emit('photo', msg);
     }
-    
     if (!userState[chatId] || userState[chatId].step === 'none') {
         bot.sendMessage(chatId, "Tushunmadim. Iltimos, quyidagi tugmalardan birini tanlang:", mainKeyboard);
         return;
     }
-    
+
     const state = userState[chatId];
     const step = state.step;
     let data = state.data;
-    
+
     // Mahsulot qo'shish bosqichlari
     if (step.startsWith('product_')) {
         const oldStep = step;
@@ -702,7 +741,7 @@ bot.on('message', async (msg) => {
                 bot.sendMessage(chatId, "5/8. Rasm yuboring (photo formatida):", mainBackKeyboard);
                 break;
             case 'product_image':
-                return;
+                return; // Rasm handlerda qayta ishlanadi
             case 'product_description':
                 data.description = text;
                 state.steps.push(oldStep);
@@ -725,14 +764,12 @@ bot.on('message', async (msg) => {
                     return;
                 }
                 data.stock = parseInt(text);
-                
                 const newId = await getNextId('products');
                 if (newId === -1) {
                     bot.sendMessage(chatId, "❌ Mahsulot ID sini olishda xato yuz berdi!", mainKeyboard);
                     resetUserState(chatId);
                     return;
                 }
-               
                 const newProduct = {
                     id: newId,
                     name: data.name,
@@ -745,14 +782,18 @@ bot.on('message', async (msg) => {
                     boxCapacity: data.boxCapacity,
                     stock: data.stock,
                 };
-                
+
                 try {
                     await db.collection('products').doc(String(newId)).set(newProduct);
                     bot.sendMessage(chatId,
-                        `✅ Mahsulot muvaffaqiyatli qo'shildi!\n\n` +
-                        `Nomi: ${newProduct.name}\n` +
-                        `Dona narxi: ${newProduct.pricePiece.toFixed(2)} $\n` +
-                        `Chegirma: ${newProduct.discount}%\n` +
+                        `✅ Mahsulot muvaffaqiyatli qo'shildi!
+` +
+                        `Nomi: ${newProduct.name}
+` +
+                        `Dona narxi: ${newProduct.pricePiece.toFixed(2)} $
+` +
+                        `Chegirma: ${newProduct.discount}%
+` +
                         `Stock: ${newProduct.stock.toLocaleString()} dona`,
                         { ...mainKeyboard, parse_mode: 'Markdown' }
                     );
@@ -766,7 +807,7 @@ bot.on('message', async (msg) => {
         state.data = data;
         return;
     }
-    
+
     // Kategoriya qo'shish bosqichlari
     if (step.startsWith('category_')) {
         const oldStep = step;
@@ -785,14 +826,14 @@ bot.on('message', async (msg) => {
                     resetUserState(chatId);
                     return;
                 }
-               
                 const newCategory = { id: newId, name: data.name, icon: data.icon };
-                
                 try {
                     await db.collection('categories').doc(String(newId)).set(newCategory);
                     bot.sendMessage(chatId,
-                        `✅ Kategoriya muvaffaqiyatli qo'shildi!\n\n` +
-                        `Nomi: ${newCategory.name}\n` +
+                        `✅ Kategoriya muvaffaqiyatli qo'shildi!
+` +
+                        `Nomi: ${newCategory.name}
+` +
                         `Ikonka: ${newCategory.icon}`,
                         { ...mainKeyboard, parse_mode: 'Markdown' }
                     );
@@ -806,20 +847,16 @@ bot.on('message', async (msg) => {
         state.data = data;
         return;
     }
-    
+
     // TUZATILGAN: Kategoriya yangilash bosqichlari
     if (state.step === 'update_category_name') {
         const stateData = state.data;
         const messageId = stateData.messageId;
-        
         try {
             await db.collection('categories').doc(String(stateData.categoryId)).update({ name: text });
-            
             // State'ni saqlab qolish
             state.step = 'category_update_view';
-            
             await showCategoryView(chatId, stateData.categoryId, messageId);
-            
             bot.sendMessage(chatId,
                 `✅ Kategoriya nomi yangilandi: ${text}`,
                 backKeyboard
@@ -831,19 +868,14 @@ bot.on('message', async (msg) => {
         }
         return;
     }
-    
     if (state.step === 'update_category_icon') {
         const stateData = state.data;
         const messageId = stateData.messageId;
-        
         try {
             await db.collection('categories').doc(String(stateData.categoryId)).update({ icon: text });
-            
             // State'ni saqlab qolish
             state.step = 'category_update_view';
-            
             await showCategoryView(chatId, stateData.categoryId, messageId);
-            
             bot.sendMessage(chatId,
                 `✅ Kategoriya ikonka yangilandi: ${text}`,
                 backKeyboard
@@ -855,7 +887,7 @@ bot.on('message', async (msg) => {
         }
         return;
     }
-    
+
     // TUZATILGAN: Mahsulot yangilash bosqichlari
     if (state.step === 'update_value') {
         const stateData = state.data;
@@ -863,11 +895,10 @@ bot.on('message', async (msg) => {
         let value;
         let fieldType = stateData.field;
         let fieldNameUz;
-        
+
         if (fieldType.includes('price') || fieldType === 'stock' || fieldType === 'boxCapacity' || fieldType === 'discount') {
             const isDiscount = fieldType === 'discount';
             const isStockOrCapacity = fieldType === 'stock' || fieldType === 'boxCapacity';
-           
             if (isDiscount) {
                 fieldNameUz = 'Chegirma';
                 if (!/^\d+$/.test(text) || parseInt(text) < 0 || parseInt(text) > 100) {
@@ -895,15 +926,12 @@ bot.on('message', async (msg) => {
             resetUserState(chatId);
             return;
         }
-       
+
         try {
             await db.collection('products').doc(String(stateData.productId)).update({ [fieldType]: value });
-            
             // State'ni saqlab qolish
             state.step = 'product_update_view';
-            
             await showProductView(chatId, stateData.productId, messageId);
-            
             bot.sendMessage(chatId,
                 `✅ ${fieldNameUz} yangilandi: ${value}`,
                 backKeyboard
@@ -915,19 +943,15 @@ bot.on('message', async (msg) => {
         }
         return;
     }
-    
+
     if (state.step === 'update_product_description') {
         const stateData = state.data;
         const messageId = stateData.messageId;
-        
         try {
             await db.collection('products').doc(String(stateData.productId)).update({ description: text });
-            
             // State'ni saqlab qolish
             state.step = 'product_update_view';
-            
             await showProductView(chatId, stateData.productId, messageId);
-            
             bot.sendMessage(chatId,
                 `✅ Mahsulot tavsifi yangilandi: ${text.substring(0, 50)}...`,
                 backKeyboard
@@ -939,19 +963,15 @@ bot.on('message', async (msg) => {
         }
         return;
     }
-    
+
     if (state.step === 'update_product_name') {
         const stateData = state.data;
         const messageId = stateData.messageId;
-        
         try {
             await db.collection('products').doc(String(stateData.productId)).update({ name: text });
-            
-            // State'ni saqlab qolish  
+            // State'ni saqlab qolish
             state.step = 'product_update_view';
-            
             await showProductView(chatId, stateData.productId, messageId);
-            
             bot.sendMessage(chatId,
                 `✅ Mahsulot nomi yangilandi: ${text}`,
                 backKeyboard
@@ -963,7 +983,7 @@ bot.on('message', async (msg) => {
         }
         return;
     }
-    
+
     bot.sendMessage(chatId, "Tushunmadim. Orqaga bosib oldingizga qayting yoki ❌ Bekor qilish ni bosing.", mainKeyboard);
 });
 
@@ -971,27 +991,25 @@ bot.on('message', async (msg) => {
 bot.on('photo', async (msg) => {
     const chatId = msg.chat.id;
     const fileId = msg.photo[msg.photo.length - 1].file_id;
-    
+
     if (!admins.includes(chatId)) return;
-   
     if (!db) {
         bot.sendMessage(chatId, "❌ Uzr, Database ulanishi yo'q.");
         return;
     }
-    
     const state = userState[chatId];
     if (state && (state.step === 'product_image' || state.step === 'update_product_image')) {
         let data = state.data;
         const waitMessage = await bot.sendMessage(chatId, "Rasm yuklanmoqda... ⏳");
         const imageUrl = await uploadToImgBB(fileId);
-        
+
         if (imageUrl) {
             data.image = imageUrl;
-            
             if (state.step === 'product_image') {
                 state.steps.push(state.step);
                 state.step = 'product_description';
-                await bot.editMessageText(`✅ Rasm yuklandi!\n\n6/8. Tavsif (qisqa ma'lumot):`, {
+                await bot.editMessageText(`✅ Rasm yuklandi!
+6/8. Tavsif (qisqa ma'lumot):`, {
                     chat_id: chatId,
                     message_id: waitMessage.message_id
                 });
@@ -999,15 +1017,11 @@ bot.on('photo', async (msg) => {
             } else if (state.step === 'update_product_image') {
                 const stateData = state.data;
                 const messageId = stateData.messageId;
-                
                 try {
                     await db.collection('products').doc(String(stateData.productId)).update({ image: imageUrl });
-                    
                     // State'ni saqlab qolish
                     state.step = 'product_update_view';
-                    
                     await showProductView(chatId, stateData.productId, messageId);
-                    
                     bot.editMessageText(`✅ Mahsulot rasmi yangilandi!`, {
                         chat_id: chatId,
                         message_id: waitMessage.message_id
@@ -1038,51 +1052,45 @@ bot.on('callback_query', async (callbackQuery) => {
     const chatId = callbackQuery.message.chat.id;
     const messageId = callbackQuery.message.message_id;
     const data = callbackQuery.data;
-    
+
     console.log(`Callback received: ${data}`);
-    
+
     if (!data || !admins.includes(chatId)) {
         bot.answerCallbackQuery(callbackQuery.id, { text: "Ruxsat yo'q!" });
         return;
     }
-   
     if (!db) {
         bot.answerCallbackQuery(callbackQuery.id, { text: "Database ulanishi yo'q." });
         return;
     }
-   
+
     // Inline orqaga
     if (data === 'back_to_prev') {
         await handleInlineBack(chatId, messageId);
         bot.answerCallbackQuery(callbackQuery.id, { text: "Orqaga qaytildi!" });
         return;
     }
-    
+
     // TUZATILGAN: Kategoriya yangilash uchun tanlash
     if (data.startsWith('cat_select_')) {
         const categoryIdStr = data.replace('cat_select_', '');
         const categoryIdNum = parseInt(categoryIdStr);
-        
         if (isNaN(categoryIdNum)) {
             bot.answerCallbackQuery(callbackQuery.id, { text: "Noto'g'ri kategoriya ID!" });
             return;
         }
-        
         try {
             const doc = await db.collection('categories').doc(String(categoryIdNum)).get();
-            
             if (!doc.exists) {
                 bot.answerCallbackQuery(callbackQuery.id, { text: "Kategoriya topilmadi!" });
                 return;
             }
-            
-            const state = userState[chatId] || { step: 'none', data: {}, steps: [] };
+            const state = userState[chatId] || { step: 'none',  {}, steps: [] };
             state.steps.push(state.step);
             state.step = 'category_update_view';
             state.data.categoryId = categoryIdNum;
             state.data.messageId = messageId;
             userState[chatId] = state;
-            
             await showCategoryView(chatId, categoryIdNum, messageId);
             bot.answerCallbackQuery(callbackQuery.id, { text: "Kategoriya tanlandi!" });
         } catch (error) {
@@ -1091,61 +1099,53 @@ bot.on('callback_query', async (callbackQuery) => {
         }
         return;
     }
-    
+
     // TUZATILGAN: Kategoriya nomini yangilash
     if (data.startsWith('cat_update_name_')) {
         const categoryIdStr = data.replace('cat_update_name_', '');
         const categoryIdNum = parseInt(categoryIdStr);
-        
-        const state = userState[chatId] || { step: 'none', data: {}, steps: [] };
+        const state = userState[chatId] || { step: 'none',  {}, steps: [] };
         // Oldingi state'dan steps'ni saqlab qolish
         const oldSteps = state.steps || [];
-        
-        userState[chatId] = { 
-            step: 'update_category_name', 
-            data: { categoryId: categoryIdNum, messageId: messageId }, 
+        userState[chatId] = {
+            step: 'update_category_name',
+             { categoryId: categoryIdNum, messageId: messageId },
             steps: oldSteps
         };
         bot.sendMessage(chatId, 'Yangi kategoriya nomini kiriting:', backKeyboard);
         bot.answerCallbackQuery(callbackQuery.id, { text: "Nom o'zgartirish tanlandi!" });
         return;
     }
-    
+
     // TUZATILGAN: Kategoriya ikonkasini yangilash
     if (data.startsWith('cat_update_icon_')) {
         const categoryIdStr = data.replace('cat_update_icon_', '');
         const categoryIdNum = parseInt(categoryIdStr);
-        
-        const state = userState[chatId] || { step: 'none', data: {}, steps: [] };
+        const state = userState[chatId] || { step: 'none',  {}, steps: [] };
         // Oldingi state'dan steps'ni saqlab qolish
         const oldSteps = state.steps || [];
-        
-        userState[chatId] = { 
-            step: 'update_category_icon', 
-            data: { categoryId: categoryIdNum, messageId: messageId }, 
+        userState[chatId] = {
+            step: 'update_category_icon',
+             { categoryId: categoryIdNum, messageId: messageId },
             steps: oldSteps
         };
         bot.sendMessage(chatId, 'Yangi kategoriya ikonka (emoji) ni kiriting:', backKeyboard);
         bot.answerCallbackQuery(callbackQuery.id, { text: "Ikonka o'zgartirish tanlandi!" });
         return;
     }
-    
+
     // Kategoriyani o'chirish
     if (data.startsWith('delete_category_')) {
         const categoryIdStr = data.replace('delete_category_', '');
         const categoryIdNum = parseInt(categoryIdStr);
-        
         try {
             const doc = await db.collection('categories').doc(String(categoryIdNum)).get();
-            
             if (!doc.exists) {
                 bot.answerCallbackQuery(callbackQuery.id, { text: "Kategoriya topilmadi!" });
                 return;
             }
-            
             const categoryData = doc.data();
             const productsCount = await getProductsInCategory(categoryData.name);
-            
             if (productsCount === 0) {
                 await db.collection('categories').doc(String(categoryIdNum)).delete();
                 bot.editMessageText(`✅ Kategoriya "${categoryData.name}" o'chirildi.`, {
@@ -1157,12 +1157,13 @@ bot.on('callback_query', async (callbackQuery) => {
                     reply_markup: {
                         inline_keyboard: [
                             [{ text: `Ha, o'chir (${productsCount} ta mahsulot ham o'chadi)`, callback_data: `confirm_delete_category_${categoryIdNum}` }],
-                            [{ text: "Yo'q, bekor qilish", callback_data: 'back_to_prev' }]
+                            [{ text: "Yo'q, bekor qilish", callback_ 'back_to_prev' }]
                         ],
                     },
                 };
                 bot.editMessageText(
-                    `⚠️ "${categoryData.name}" kategoriyasida ${productsCount} ta mahsulot bor.\n\n` +
+                    `⚠️ "${categoryData.name}" kategoriyasida ${productsCount} ta mahsulot bor.
+` +
                     `Rostan ham o'chirmoqchimisiz?`,
                     {
                         chat_id: chatId, message_id: messageId,
@@ -1177,27 +1178,24 @@ bot.on('callback_query', async (callbackQuery) => {
         }
         return;
     }
-    
+
     // Mahsulot yangilash uchun kategoriya tanlash
     if (data.startsWith('select_category_')) {
         const categoryIdStr = data.replace('select_category_', '');
         const categoryIdNum = parseInt(categoryIdStr);
-        
         try {
             const doc = await db.collection('categories').doc(String(categoryIdNum)).get();
-            
             if (!doc.exists) {
                 bot.answerCallbackQuery(callbackQuery.id, { text: "Kategoriya topilmadi!" });
                 return;
             }
-            
             const categoryData = doc.data();
-            const state = userState[chatId] || { step: 'none', data: {}, steps: [] };
+            const state = userState[chatId] || { step: 'none',  {}, steps: [] };
             state.steps.push(state.step);
             state.step = 'product_update_product_select';
             state.data.selectedCategory = categoryData.name;
+            state.data.messageId = messageId; // Mahsulotlar ro'yxatini o'zgartirish uchun messageId saqlanadi
             userState[chatId] = state;
-            
             await showProductsInCategory(chatId, categoryData.name, messageId);
             bot.answerCallbackQuery(callbackQuery.id, { text: "Kategoriya tanlandi!" });
         } catch (error) {
@@ -1206,27 +1204,23 @@ bot.on('callback_query', async (callbackQuery) => {
         }
         return;
     }
-    
+
     // Mahsulot tanlash
     if (data.startsWith('update_product_')) {
         const productIdStr = data.replace('update_product_', '');
         const productIdNum = parseInt(productIdStr);
-        
         try {
             const doc = await db.collection('products').doc(String(productIdNum)).get();
-            
             if (!doc.exists) {
                 bot.answerCallbackQuery(callbackQuery.id, { text: "Mahsulot topilmadi!" });
                 return;
             }
-            
-            const state = userState[chatId] || { step: 'none', data: {}, steps: [] };
+            const state = userState[chatId] || { step: 'none',  {}, steps: [] };
             state.steps.push(state.step);
             state.step = 'product_update_view';
             state.data.productId = productIdNum;
             state.data.messageId = messageId;
             userState[chatId] = state;
-            
             await showProductView(chatId, productIdNum, messageId);
             bot.answerCallbackQuery(callbackQuery.id, { text: "Mahsulot tanlandi!" });
         } catch (error) {
@@ -1235,14 +1229,13 @@ bot.on('callback_query', async (callbackQuery) => {
         }
         return;
     }
-    
+
     // TUZATILGAN: Mahsulot maydonlarini yangilash
     if (data.startsWith('update_field_')) {
         const parts = data.split('_');
         const fieldType = parts[2];
         const productIdStr = parts[3];
         const productIdNum = parseInt(productIdStr);
-        
         const fieldMap = {
             'name': 'Mahsulot nomi',
             'pricePiece': 'Dona narxi (USD)',
@@ -1252,62 +1245,54 @@ bot.on('callback_query', async (callbackQuery) => {
             'description': 'Tavsif',
             'image': 'Rasm'
         };
-        
         const fieldName = fieldMap[fieldType];
-        
-        const state = userState[chatId] || { step: 'none', data: {}, steps: [] };
+        const state = userState[chatId] || { step: 'none',  {}, steps: [] };
         const oldSteps = state.steps || [];
-        
         if (fieldType === 'name') {
-            userState[chatId] = { 
-                step: 'update_product_name', 
-                data: { productId: productIdNum, messageId: messageId }, 
+            userState[chatId] = {
+                step: 'update_product_name',
+                 { productId: productIdNum, messageId: messageId },
                 steps: oldSteps
             };
             bot.sendMessage(chatId, `Yangi mahsulot nomini kiriting:`, backKeyboard);
         } else if (fieldType === 'description') {
-            userState[chatId] = { 
-                step: 'update_product_description', 
-                data: { productId: productIdNum, messageId: messageId }, 
+            userState[chatId] = {
+                step: 'update_product_description',
+                 { productId: productIdNum, messageId: messageId },
                 steps: oldSteps
             };
             bot.sendMessage(chatId, `Yangi tavsifni kiriting:`, backKeyboard);
         } else if (fieldType === 'image') {
-            userState[chatId] = { 
-                step: 'update_product_image', 
-                data: { productId: productIdNum, messageId: messageId }, 
+            userState[chatId] = {
+                step: 'update_product_image',
+                 { productId: productIdNum, messageId: messageId },
                 steps: oldSteps
             };
             bot.sendMessage(chatId, 'Yangi rasm yuboring (photo formatida):', mainBackKeyboard);
         } else {
-            userState[chatId] = { 
-                step: 'update_value', 
-                data: { productId: productIdNum, field: fieldType, messageId: messageId }, 
+            userState[chatId] = {
+                step: 'update_value',
+                data: { productId: productIdNum, field: fieldType, messageId: messageId },
                 steps: oldSteps
             };
             bot.sendMessage(chatId, `${fieldName} uchun yangi qiymatni yuboring:`, backKeyboard);
         }
-        
         bot.answerCallbackQuery(callbackQuery.id, { text: `${fieldName} tanlandi!` });
         return;
     }
-    
+
     // Mahsulotni o'chirish
     if (data.startsWith('delete_product_')) {
         const productIdStr = data.replace('delete_product_', '');
         const productIdNum = parseInt(productIdStr);
-        
         try {
             const doc = await db.collection('products').doc(String(productIdNum)).get();
-            
             if (!doc.exists) {
                 bot.answerCallbackQuery(callbackQuery.id, { text: "Mahsulot topilmadi!" });
                 return;
             }
-            
             const productData = doc.data();
             await db.collection('products').doc(String(productIdNum)).delete();
-            
             bot.editMessageText(`✅ Mahsulot "${productData.name}" o'chirildi.`, {
                 chat_id: chatId, message_id: messageId, parse_mode: 'Markdown'
             });
