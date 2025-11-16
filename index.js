@@ -704,11 +704,12 @@ bot.on('message', async (msg) => {
                 bot.sendMessage(chatId, "2/8. Dona narxi (USD, raqam, mas: 5.50):", backKeyboard);
                 break;
             case 'product_price_piece':
-                if (!/^\d+(\.\d{1,2})?$/.test(text) || parseFloat(text) <= 0) {
-                    bot.sendMessage(chatId, "Musbat son kiriting (masalan: 5 yoki 5.50)!");
+                const parsedPricePiece = parsePrice(text);
+                if (parsedPricePiece === null || parsedPricePiece < 0) {
+                    bot.sendMessage(chatId, "Iltimos, to'g'ri narx kiriting (masalan: 5, 5.50 yoki 0,00)!");
                     return;
                 }
-                data.pricePiece = parseFloat(text);
+                data.pricePiece = parsedPricePiece;
                 state.steps.push(oldStep);
                 state.step = 'product_discount';
                 bot.sendMessage(chatId, "3/8. Chegirma (0-100, mas: 10):", backKeyboard);
