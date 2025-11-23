@@ -9,7 +9,7 @@ const FormData = require('form-data');
 
 // 2. Maxfiy ma'lumotlarni Environment Variables (Railway) dan olish
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN || '7586941333:AAHKly13Z3M5qkyKjP-6x-thWvXdJudIHsU';
-const IMGBB_API_KEY = process.env.IMGBB_API_KEY || '38fcdca0b624f0123f15491175c8bd78';
+const IMGBB_API_KEY = process.env.IMGBB_API_KEY || '92f447e91c83252eedc95d323bf1b92a';
 // Admin ID'lar stringdan Arrayga o'tkaziladi
 const admins = (process.env.ADMIN_IDS || '5761225998,7122472578').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 
