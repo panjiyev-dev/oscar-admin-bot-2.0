@@ -1307,4 +1307,4 @@ bot.on('callback_query', async (callbackQuery) => {
     }
 });
 
-console.log("✅ Bot ishga tushdi va polling boshlandi...");
+console.log("Bot ishga tushdi va polling boshlandi...");
