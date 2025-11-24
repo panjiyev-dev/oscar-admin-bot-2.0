@@ -10,7 +10,7 @@ const FormData = require('form-data');
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN || '7586941333:AAHKly13Z3M5qkyKjP-6x-thWvXdJudIHsU';
 const IMGBB_API_KEY = process.env.IMGBB_API_KEY || '92f447e91c83252eedc95d323bf1b92a';
 // Admin ID'lar stringdan Arrayga o'tkaziladi
-const admins = (process.env.ADMIN_IDS || '5761225998,7122472578').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+const admins = (process.env.ADMIN_IDS || '5761225998,7122472578,6600096842').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 
 // 3. 🛠️ FIREBASE'NI SOZLASH (YANGILANGAN QISM - Railway uchun)
 let db;
