@@ -640,23 +640,33 @@ const commandButtons = [
     "❌ Bekor qilish"
 ];
 
-// Yordamchi funksiya: Son formatini to'g'rilash
-function parseNumberInput(input) {
-    if (typeof input !== 'string') return null;
-    // Barcha vergulni nuqtaga almashtirish
-    let normalized = input.replace(/,/g, '.');
-    
-    // Agar o'nlik qismda 3 tadan ko'p raqam bo'lsa, faqat 3 tasini olish
+// Yordamchi funksiya: Son formatini to'g'rilash va 3 xonalikka cheklash
+function parseNumberInput(input, isPrice = false) {
+  if (typeof input !== 'string') return null;
+
+  // Barcha vergulni nuqtaga almashtirish
+  let normalized = input.replace(/,/g, '.');
+
+  const parsed = parseFloat(normalized);
+
+  if (isNaN(parsed) || parsed < 0) {
+    return null;
+  }
+
+  if (isPrice) {
+    // Agar qiymat narx bo'lsa, maksimum 3 xonalik o'nli kasr qismi qoladi
     const parts = normalized.split('.');
     if (parts.length === 2 && parts[1].length > 3) {
-        // Faqat birinchi 3 ta o'nlik raqamni olish (kesish)
-        normalized = parts[0] + '.' + parts[1].substring(0, 3);
+      // Birinchi 3 ta o'nlik raqamni kesish
+      normalized = parts[0] + '.' + parts[1].substring(0, 3);
     }
-    
-    const parsed = parseFloat(normalized);
-    return isNaN(parsed) ? null : parsed;
-}
+    // Kesilgandan keyin yana parseFloat qilish kerak
+    return parseFloat(normalized);
+  }
 
+  // Agar narx bo'lmasa, oddiy qaytarish (masalan, stock, boxCapacity)
+  return parsed;
+}
 bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
     const text = msg.text;
@@ -710,12 +720,12 @@ bot.on('message', async (msg) => {
                 bot.sendMessage(chatId, "2/8. Dona narxi (USD, raqam, mas: 5.50 yoki 5,50):", backKeyboard);
                 break;
             case 'product_price_piece':
-                const pricePiece = parseNumberInput(text);
+                const pricePiece = parseNumberInput(text, true); // <-- isPrice = true
                 if (pricePiece === null || pricePiece <= 0) {
-                    bot.sendMessage(chatId, "Musbat son kiriting (masalan: 5 yoki 5.50 yoki 5,50)!");
+                    bot.sendMessage(chatId, "Musbat son kiriting (masalan: 5 yoki 5.50 yoki 5,50)! (Maksimal 3 o'nlik xona)");
                     return;
                 }
-                data.pricePiece = pricePiece;
+                data.pricePiece = pricePiece; // Bu qiymat endi 3 xonalikka cheklangan
                 state.steps.push(oldStep);
                 state.step = 'product_discount';
                 bot.sendMessage(chatId, "3/8. Chegirma (0-100, mas: 10):", backKeyboard);
@@ -896,66 +906,64 @@ bot.on('message', async (msg) => {
     }
 
     // TUZATILGAN: Mahsulot yangilash bosqichlari
-    if (state.step === 'update_value') {
-    const stateData = state.data;
-    const messageId = stateData.messageId;
-    let value;
-    let fieldType = stateData.field;
-    let fieldNameUz;
+if (state.step === 'update_value') {
+  const stateData = state.data;
+  const messageId = stateData.messageId;
+  let value;
+  let fieldType = stateData.field;
+  let fieldNameUz;
 
-    if (fieldType.includes('price') || fieldType === 'stock' || fieldType === 'boxCapacity' || fieldType === 'discount') {
-        const isDiscount = fieldType === 'discount';
-        const isStockOrCapacity = fieldType === 'stock' || fieldType === 'boxCapacity';
-        if (isDiscount) {
-            fieldNameUz = 'Chegirma';
-            if (!/^\d+$/.test(text) || parseInt(text) < 0 || parseInt(text) > 100) {
-                bot.sendMessage(chatId, "Iltimos, Chegirma uchun 0-100 orasida son kiriting!");
-                return;
-            }
-            value = parseInt(text);
-        } else if (isStockOrCapacity) {
-            fieldNameUz = fieldType === 'stock' ? 'Stock' : 'Karobkadagi dona soni';
-            if (!/^\d+$/.test(text) || parseInt(text) < 0) {
-                bot.sendMessage(chatId, `Iltimos, ${fieldNameUz} uchun 0 yoki musbat son kiriting!`);
-                return;
-            }
-            value = parseInt(text);
-        } else {
-            // pricePiece yoki boshqa narxli maydonlar
-            fieldNameUz = 'Dona narxi';
-            const parsedValue = parseNumberInput(text);
-            if (parsedValue === null || parsedValue <= 0) {
-                bot.sendMessage(chatId, `${fieldNameUz} uchun musbat son kiriting (masalan: 5 yoki 5.50 yoki 5,50)!`);
-                return;
-            }
-            value = parsedValue;
-        }
-    } else {
-        bot.sendMessage(chatId, "Noto'g'ri maydon aniqlandi!");
-        resetUserState(chatId);
-        return;
+  // Maydon turi bo'yicha o'zgaruvchilarni aniqlash
+  if (fieldType.includes('price')) {
+    fieldNameUz = 'Dona narxi (USD)';
+    const parsedValue = parseNumberInput(text, true); // <-- isPrice = true
+    if (parsedValue === null || parsedValue <= 0) {
+      bot.sendMessage(chatId, `${fieldNameUz} uchun musbat son kiriting (masalan: 5 yoki 5.50 yoki 5,50)! (Maksimal 3 o'nlik xona)`);
+      return;
     }
-
-    try {
-        await db.collection('products').doc(String(stateData.productId)).update({ [fieldType]: value });
-        // Formatlangan qiymatni ko'rsatish
-        let displayValue = value;
-        if (fieldType.includes('price')) {
-            displayValue = value.toFixed(3).replace(/\.?0+$/, ''); // ortiqcha nollarni olib tashlash
-        }
-        // State'ni saqlab qolish
-        state.step = 'product_update_view';
-        await showProductView(chatId, stateData.productId, messageId);
-        bot.sendMessage(chatId,
-            `✅ ${fieldNameUz} yangilandi: ${displayValue}`,
-            backKeyboard
-        );
-    } catch (error) {
-        console.error("Yangilashda xato:", error);
-        bot.sendMessage(chatId, "❌ Yangilashda xato yuz berdi!", mainKeyboard);
-        resetUserState(chatId);
+    value = parsedValue; // Endi qiymat 3 xonalikka cheklangan
+  } else if (fieldType === 'discount') {
+    fieldNameUz = 'Chegirma';
+    const parsedValue = parseNumberInput(text, false); // Cheklama uchun isPrice=false
+    if (parsedValue === null || parsedValue < 0 || parsedValue > 100) {
+      bot.sendMessage(chatId, "0 dan 100 gacha son kiriting!");
+      return;
     }
+    value = parsedValue;
+  } else if (fieldType === 'stock' || fieldType === 'boxCapacity') {
+    fieldNameUz = fieldType === 'stock' ? 'Stock soni' : 'Qutidagi soni';
+    const parsedValue = parseNumberInput(text, false);
+    if (parsedValue === null || parsedValue <= 0) {
+      bot.sendMessage(chatId, `${fieldNameUz} uchun musbat son kiriting!`);
+      return;
+    }
+    value = Math.floor(parsedValue); // Stock va boxCapacity butun son bo'lishi kerak
+  } else {
+    bot.sendMessage(chatId, "Noto'g'ri maydon aniqlandi!");
+    resetUserState(chatId);
     return;
+  }
+
+  try {
+    await db.collection('products').doc(String(stateData.productId)).update({ [fieldType]: value });
+
+    // Ko'rsatish uchun formatlash
+    let displayValue = value;
+    if (fieldType.includes('price')) {
+      // Narxni 3 xonalikka cheklab, ortiqcha nollarni olib tashlash
+      displayValue = value.toFixed(3).replace(/\.?0+$/, '');
+    }
+    // Boshqa qiymatlarni kerak bo'lsa formatlang
+
+    state.step = 'product_update_view';
+    await showProductView(chatId, stateData.productId, messageId);
+    bot.sendMessage(chatId, `✅ ${fieldNameUz} yangilandi: ${displayValue}`, backKeyboard);
+  } catch (error) {
+    console.error("Yangilashda xato:", error);
+    bot.sendMessage(chatId, "❌ Yangilashda xato yuz berdi!", mainKeyboard);
+    resetUserState(chatId);
+  }
+  return;
 }
 
     if (state.step === 'update_product_description') {
