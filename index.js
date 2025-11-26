@@ -642,11 +642,16 @@ const commandButtons = [
 
 // Yordamchi funksiya: Son formatini to'g'rilash
 function parseNumberInput(input) {
-    if (typeof input !== 'string') return null;
+     if (typeof input !== 'string') return null;
     // Barcha vergulni nuqtaga almashtirish
     const normalized = input.replace(/,/g, '.');
     const parsed = parseFloat(normalized);
-    return isNaN(parsed) ? null : parsed;
+    if (isNaN(parsed)) return null;
+    
+    // Maksimum 3 ta o'nlik raqamga cheklash (yaxlitlash)
+    // Math.round(parsed * 1000) / 1000 - bu 3 ta o'nlik raqamga yaxlitlaydi
+    const rounded = Math.round(parsed * 1000) / 1000;
+    return rounded;
 }
 
 bot.on('message', async (msg) => {
