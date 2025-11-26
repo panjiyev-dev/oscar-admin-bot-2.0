@@ -642,16 +642,19 @@ const commandButtons = [
 
 // Yordamchi funksiya: Son formatini to'g'rilash
 function parseNumberInput(input) {
-     if (typeof input !== 'string') return null;
+    if (typeof input !== 'string') return null;
     // Barcha vergulni nuqtaga almashtirish
-    const normalized = input.replace(/,/g, '.');
-    const parsed = parseFloat(normalized);
-    if (isNaN(parsed)) return null;
+    let normalized = input.replace(/,/g, '.');
     
-    // Maksimum 3 ta o'nlik raqamga cheklash (yaxlitlash)
-    // Math.round(parsed * 1000) / 1000 - bu 3 ta o'nlik raqamga yaxlitlaydi
-    const rounded = Math.round(parsed * 1000) / 1000;
-    return rounded;
+    // Agar o'nlik qismda 3 tadan ko'p raqam bo'lsa, faqat 3 tasini olish
+    const parts = normalized.split('.');
+    if (parts.length === 2 && parts[1].length > 3) {
+        // Faqat birinchi 3 ta o'nlik raqamni olish (kesish)
+        normalized = parts[0] + '.' + parts[1].substring(0, 3);
+    }
+    
+    const parsed = parseFloat(normalized);
+    return isNaN(parsed) ? null : parsed;
 }
 
 bot.on('message', async (msg) => {
@@ -894,61 +897,66 @@ bot.on('message', async (msg) => {
 
     // TUZATILGAN: Mahsulot yangilash bosqichlari
     if (state.step === 'update_value') {
-        const stateData = state.data;
-        const messageId = stateData.messageId;
-        let value;
-        let fieldType = stateData.field;
-        let fieldNameUz;
+    const stateData = state.data;
+    const messageId = stateData.messageId;
+    let value;
+    let fieldType = stateData.field;
+    let fieldNameUz;
 
-        if (fieldType.includes('price') || fieldType === 'stock' || fieldType === 'boxCapacity' || fieldType === 'discount') {
-            const isDiscount = fieldType === 'discount';
-            const isStockOrCapacity = fieldType === 'stock' || fieldType === 'boxCapacity';
-            if (isDiscount) {
-                fieldNameUz = 'Chegirma';
-                if (!/^\d+$/.test(text) || parseInt(text) < 0 || parseInt(text) > 100) {
-                    bot.sendMessage(chatId, "Iltimos, Chegirma uchun 0-100 orasida son kiriting!");
-                    return;
-                }
-                value = parseInt(text);
-            } else if (isStockOrCapacity) {
-                fieldNameUz = fieldType === 'stock' ? 'Stock' : 'Karobkadagi dona soni';
-                if (!/^\d+$/.test(text) || parseInt(text) < 0) {
-                    bot.sendMessage(chatId, `Iltimos, ${fieldNameUz} uchun 0 yoki musbat son kiriting!`);
-                    return;
-                }
-                value = parseInt(text);
-            } else {
-                // pricePiece yoki boshqa narxli maydonlar
-                fieldNameUz = 'Dona narxi';
-                const parsedValue = parseNumberInput(text);
-                if (parsedValue === null || parsedValue <= 0) {
-                    bot.sendMessage(chatId, `${fieldNameUz} uchun musbat son kiriting (masalan: 5 yoki 5.50 yoki 5,50)!`);
-                    return;
-                }
-                value = parsedValue;
+    if (fieldType.includes('price') || fieldType === 'stock' || fieldType === 'boxCapacity' || fieldType === 'discount') {
+        const isDiscount = fieldType === 'discount';
+        const isStockOrCapacity = fieldType === 'stock' || fieldType === 'boxCapacity';
+        if (isDiscount) {
+            fieldNameUz = 'Chegirma';
+            if (!/^\d+$/.test(text) || parseInt(text) < 0 || parseInt(text) > 100) {
+                bot.sendMessage(chatId, "Iltimos, Chegirma uchun 0-100 orasida son kiriting!");
+                return;
             }
+            value = parseInt(text);
+        } else if (isStockOrCapacity) {
+            fieldNameUz = fieldType === 'stock' ? 'Stock' : 'Karobkadagi dona soni';
+            if (!/^\d+$/.test(text) || parseInt(text) < 0) {
+                bot.sendMessage(chatId, `Iltimos, ${fieldNameUz} uchun 0 yoki musbat son kiriting!`);
+                return;
+            }
+            value = parseInt(text);
         } else {
-            bot.sendMessage(chatId, "Noto'g'ri maydon aniqlandi!");
-            resetUserState(chatId);
-            return;
+            // pricePiece yoki boshqa narxli maydonlar
+            fieldNameUz = 'Dona narxi';
+            const parsedValue = parseNumberInput(text);
+            if (parsedValue === null || parsedValue <= 0) {
+                bot.sendMessage(chatId, `${fieldNameUz} uchun musbat son kiriting (masalan: 5 yoki 5.50 yoki 5,50)!`);
+                return;
+            }
+            value = parsedValue;
         }
-
-        try {
-            await db.collection('products').doc(String(stateData.productId)).update({ [fieldType]: value });
-            // State'ni saqlab qolish
-            state.step = 'product_update_view';
-            await showProductView(chatId, stateData.productId, messageId);
-            bot.sendMessage(chatId,
-                `✅ ${fieldNameUz} yangilandi: ${value}`,
-                backKeyboard
-            );
-        } catch (error) {
-            console.error("Yangilashda xato:", error);
-            bot.sendMessage(chatId, "❌ Yangilashda xato yuz berdi!", mainKeyboard);
-            resetUserState(chatId);
-        }
+    } else {
+        bot.sendMessage(chatId, "Noto'g'ri maydon aniqlandi!");
+        resetUserState(chatId);
         return;
     }
+
+    try {
+        await db.collection('products').doc(String(stateData.productId)).update({ [fieldType]: value });
+        // Formatlangan qiymatni ko'rsatish
+        let displayValue = value;
+        if (fieldType.includes('price')) {
+            displayValue = value.toFixed(3).replace(/\.?0+$/, ''); // ortiqcha nollarni olib tashlash
+        }
+        // State'ni saqlab qolish
+        state.step = 'product_update_view';
+        await showProductView(chatId, stateData.productId, messageId);
+        bot.sendMessage(chatId,
+            `✅ ${fieldNameUz} yangilandi: ${displayValue}`,
+            backKeyboard
+        );
+    } catch (error) {
+        console.error("Yangilashda xato:", error);
+        bot.sendMessage(chatId, "❌ Yangilashda xato yuz berdi!", mainKeyboard);
+        resetUserState(chatId);
+    }
+    return;
+}
 
     if (state.step === 'update_product_description') {
         const stateData = state.data;
